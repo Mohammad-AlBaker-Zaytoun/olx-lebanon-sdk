@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+
+# Secrets and per-user runtime state — never commit these
+.env
+.olx-session/
+captures/
+logs/
+data/
+
+.DS_Store
+*.log

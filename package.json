@@ -1,0 +1,61 @@
+{
+  "name": "olx-lebanon-sdk",
+  "version": "0.1.0",
+  "description": "Unofficial TypeScript SDK and local REST service for posting and managing your own listings on OLX Lebanon.",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "olx-lb-server": "dist/server/index.js"
+  },
+  "files": [
+    "dist",
+    "config/*.example.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/server/index.ts",
+    "start": "node dist/server/index.js",
+    "login": "tsx scripts/login.ts",
+    "capture": "tsx scripts/capture-flow.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "olx",
+    "olx-lebanon",
+    "dubizzle",
+    "classifieds",
+    "listings",
+    "sdk",
+    "playwright",
+    "unofficial"
+  ],
+  "author": "Mohammad AlBaker Zaytoun (https://www.zaytoun.dev/)",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "fastify": "^5.12.7",
+    "playwright": "^1.64.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  }
+}

@@ -1,0 +1,96 @@
+import { describe, expect, it, vi } from 'vitest';
+import { OlxClient } from '../src/client.js';
+import { parseEndpoints } from '../src/endpoints.js';
+import { AuthError } from '../src/errors.js';
+import type { Transport } from '../src/http/HttpClient.js';
+import { MemorySessionStore } from '../src/session/storage.js';
+import { MemorySyncStore } from '../src/sync/SyncStore.js';
+import { catalog, fakeClock, jsonResponse, session } from './helpers.js';
+
+const endpoints = parseEndpoints({
+  createAd: { method: 'POST', path: '/api/ads' },
+  updateAd: { method: 'PUT', path: '/api/ads/{id}' },
+  deleteAd: { method: 'DELETE', path: '/api/ads/{id}' },
+  uploadImage: { method: 'POST', path: 'https://img.olx.com.lb/upload' },
+});
+
+const product = {
+  title: 'Pixel 9',
+  description: 'Brand new, 1 year warranty',
+  price: 650,
+  categoryKey: 'phones',
+  locationKey: 'beirut',
+  attributes: { brand: 'Google' },
+  images: [{ url: 'https://cdn.zaytoon.test/pixel.jpg' }],
+};
+
+function makeClient(sessionData = session) {
+  const transport = vi.fn<Transport>(async (url, init) => {
+    if (url.startsWith('https://img.olx.com.lb')) return jsonResponse({ id: 'img-1' });
+    if (init.method === 'POST') return jsonResponse({ data: { id: 'ad-55', status: 'pending' } }, 201);
+    if (init.method === 'PUT') return new Response(null, { status: 204 });
+    return new Response(null, { status: 204 });
+  });
+  const imageFetch = vi.fn(
+    async () => new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } }),
+  ) as unknown as typeof fetch;
+  const client = new OlxClient({
+    baseUrl: 'https://www.olx.com.lb',
+    endpoints,
+    catalog,
+    sessionStore: new MemorySessionStore(sessionData),
+    syncStore: new MemorySyncStore(),
+    writeLimits: { minIntervalMs: 0, jitterMs: 0, maxPerHour: 100 },
+    clock: fakeClock(),
+    transport,
+    imageFetch,
+    allowedImageHosts: ['zaytoon.test'],
+  });
+  return { client, transport };
+}
+
+describe('OlxClient end to end (mocked OLX)', () => {
+  it('uploads images, creates the ad, then edits it in place', async () => {
+    const { client, transport } = makeClient();
+
+    const created = await client.sync.upsert('P-1', product);
+    expect(created.action).toBe('created');
+    expect(created.record).toMatchObject({ adId: 'ad-55', status: 'pending_review' });
+
+    const [uploadUrl, uploadInit] = transport.mock.calls[0]!;
+    expect(uploadUrl).toBe('https://img.olx.com.lb/upload');
+    expect(uploadInit.body).toBeInstanceOf(FormData);
+
+    const [createUrl, createInit] = transport.mock.calls[1]!;
+    expect(createUrl).toBe('https://www.olx.com.lb/api/ads');
+    expect(JSON.parse(String(createInit.body))).toEqual({
+      title: 'Pixel 9',
+      description: 'Brand new, 1 year warranty',
+      price: { value: 650, currency: 'USD' },
+      category_id: '123',
+      location_id: 'loc-1',
+      attributes: { make: 'Google', condition: 'new' },
+      images: ['img-1'],
+    });
+
+    const updated = await client.sync.upsert('P-1', { ...product, price: 599 });
+    expect(updated.action).toBe('updated');
+    expect(transport.mock.calls.at(-1)![0]).toBe('https://www.olx.com.lb/api/ads/ad-55');
+
+    expect(await client.sync.remove('P-1')).toEqual({ action: 'deleted', adId: 'ad-55' });
+    expect(client.endpointStatus()).toMatchObject({ createAd: true, getAd: false });
+  });
+
+  it('rejects image hosts outside the allowlist before touching OLX', async () => {
+    const { client, transport } = makeClient();
+    await expect(
+      client.sync.upsert('P-2', { ...product, images: [{ url: 'https://evil.test/x.jpg' }] }),
+    ).rejects.toThrow(/not in OLX_IMAGE_HOSTS/);
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it('asks you to log in when there is no session', async () => {
+    const { client } = makeClient(null as never);
+    await expect(client.sync.upsert('P-3', product)).rejects.toBeInstanceOf(AuthError);
+  });
+});

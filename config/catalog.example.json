@@ -1,0 +1,31 @@
+{
+  "_comment": "Copy to config/catalog.json. Keys (e.g. 'mobile-phones', 'beirut') are YOUR names, used in categoryKey / locationKey. Replace every TODO with the real OLX id from your capture. The limits below are guesses — check them against the OLX posting form.",
+
+  "limits": {
+    "titleMaxLength": 70,
+    "descriptionMaxLength": 4096,
+    "maxImages": 20
+  },
+
+  "categories": {
+    "mobile-phones": {
+      "label": "Mobile Phones & Accessories > Mobile Phones",
+      "olxCategoryId": "TODO",
+      "requiredAttributes": ["brand", "condition"],
+      "attributeMap": { "brand": "make", "condition": "new_used" },
+      "defaults": { "condition": "new" }
+    },
+    "laptops": {
+      "label": "Electronics > Computers > Laptops",
+      "olxCategoryId": "TODO",
+      "requiredAttributes": ["condition"],
+      "attributeMap": { "condition": "new_used" },
+      "defaults": { "condition": "new" }
+    }
+  },
+
+  "locations": {
+    "beirut": { "label": "Beirut", "olxLocationId": "TODO" },
+    "mount-lebanon": { "label": "Mount Lebanon", "olxLocationId": "TODO" }
+  }
+}
