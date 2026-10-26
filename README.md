@@ -33,7 +33,8 @@ OLX Group publishes partner APIs for some countries, but OLX Lebanon runs on Dub
  │            │                             │
  │            ▼                             │
  │ HTTP client — saved session, write       │
- │               throttling, request log    │
+ │               throttling, request log,   │
+ │               photo upload to OLX's S3   │
  └────────────┼─────────────────────────────┘
               ▼
           OLX Lebanon
@@ -42,6 +43,7 @@ OLX Group publishes partner APIs for some countries, but OLX Lebanon runs on Dub
 - **Session.** You log in yourself in a real browser window (`npm run login`), and complete any OTP or CAPTCHA by hand. The SDK saves the cookies and auth headers, then reuses them for plain HTTP calls.
 - **Endpoints are configuration, not code.** OLX's internal endpoints aren't documented. The ones the web app uses were recorded from a real session and ship in `config/endpoints.example.json`. The ad API lives on Dubizzle Group's backend (`api-prod.olx-dubizzle.com`), and photos go to S3 through a signed URL. If OLX changes them, recapture with `npm run capture` ([docs/ENDPOINT-CAPTURE.md](docs/ENDPOINT-CAPTURE.md)).
 - **Adapter.** OLX's exact request and response formats live in one swappable object (`OlxAdapter`). The built-in `olxLebanonAdapter` (the default) matches the captured format. If OLX changes it, pass your own adapter instead of editing SDK code.
+- **Photos.** Each product photo is downloaded from your store, uploaded to OLX's own storage through a one-time signed URL, and attached to the ad by name and size, as the web app does. The session is never sent to the upload host. On an edit, unchanged photos aren't uploaded again and the ad keeps them. Changed photos replace the old ones, which are removed with `deleted_photos`.
 - **Sync, don't spam.** Each store product maps to exactly one ad. Changed products are edited in place, never reposted. Content that hasn't changed is never sent. Writes are spaced out with jitter and capped per hour, and they are never retried automatically, because a retry could create a duplicate ad.
 
 ## Status
@@ -78,6 +80,12 @@ Copy-Item config\catalog.example.json config\catalog.json
 npm run login                                  # sign in to your OLX account
 npm run catalog -- categories laptop           # find OLX category ids
 npm run catalog -- fields 175                  # their posting fields -> catalog.json
+npm run catalog -- locations beirut            # area ids -> catalog.json locations
+
+npm run live-test -- check                     # read-only check of session, catalog, account
+npm run live-test -- create                    # optional: post, edit, delete one test ad
+npm run live-test -- edit
+npm run live-test -- delete
 
 npm run build
 npm start                                      # REST service on 127.0.0.1:8787
@@ -94,6 +102,8 @@ cp config/catalog.example.json config/catalog.json
 npm run login
 npm run catalog -- categories laptop
 npm run catalog -- fields 175
+npm run catalog -- locations beirut
+npm run live-test -- check
 npm run build && npm start
 ```
 
@@ -315,7 +325,13 @@ All settings are environment variables. See [`.env.example`](.env.example) for t
 
 ## Security notes
 
-- `.olx-session/` and `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored. On Linux and macOS they are written owner-only (`0600`/`0700`). On Windows, file modes have no effect and the files inherit the folder's permissions, so keep the project in your own user folder, not a shared one. Never commit or share them. The `.summary.txt` next to a capture only lists methods, paths and status codes. Ids, tokens, emails and phone-like path segments are replaced with `{id}`. Still, skim it before sharing.
+- `.olx-session/` and the `.har` files in `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored. On Linux and macOS they are written owner-only (`0600`/`0700`). On Windows, file modes have no effect and the files inherit the folder's permissions, so keep the project in your own user folder, not a shared one. Never commit or share them.
+- The files made *from* a capture are meant to be shareable, but skim them first:
+  - `.summary.txt`: methods, paths and status codes, with ids and tokens replaced by `{id}`.
+  - `.shapes.txt`: bodies with names, phone numbers, emails, free text and tokens masked. The token appears only as its type, issuer and lifetime.
+  - `.public/`: OLX's public category and location data.
+- Photos are only uploaded to OLX's own bucket and folder (`olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/`). An upload URL anywhere else is refused, and no session ever goes with an upload.
+- `npm run catalog -- locations` uses the website's own read-only location-search key, taken from your latest capture (or `OLX_SEARCH_AUTH`). It is never printed or saved.
 - `session.json` keeps only cookies and storage for OLX (and `OLX_EXTRA_HOSTS`). If you sign in with Google or Facebook, those sites' cookies are not saved.
 - Your session's cookies and auth headers are only sent to the OLX domain and its subdomains. An endpoint on another host gets them only if you set `sendSessionToForeignHost` for it. Redirects from OLX are never followed. Only https endpoints are called.
 - The request log (`logs/requests.jsonl`) records method, path, status and timing only. It contains no bodies, cookies, tokens or query strings, and neither do image error messages.
@@ -332,6 +348,20 @@ This tool exists so that a seller can manage **their own** listings without rety
 - Don't use it to scrape or redistribute other users' listings or personal data.
 - If OLX offers an official API or partner feed for Lebanon, prefer that.
 
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run login` | Opens a browser to sign in to OLX by hand. Saves the session to `.olx-session/` |
+| `npm run catalog -- categories [text]` | OLX category ids. Public data, no login needed |
+| `npm run catalog -- fields <id> [...]` | A category's posting fields and choices, with a ready catalog entry (`valueMap`, `priceLimits`) |
+| `npm run catalog -- locations [text]` | Area ids for `olxLocationId` |
+| `npm run live-test -- check\|create\|edit\|delete` | Step-by-step check against live OLX with one test product (`captures/test-product.json`) |
+| `npm run capture` | Records you using the OLX website, starting signed in, into a `.har` (secret) and a `.summary.txt`. Use it when OLX changes something |
+| `npm run capture:shapes` | A redacted request/response report and public catalog data from the latest capture |
+| `npm run build` / `npm start` | Build, then run the REST service |
+| `npm run dev` | The REST service with reload on change |
+
 ## Development
 
 ```bash
@@ -339,6 +369,8 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+[CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
 
 ## License
 
