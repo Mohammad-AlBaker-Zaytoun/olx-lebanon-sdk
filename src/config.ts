@@ -95,7 +95,7 @@ export interface OlxConfig {
   webhook?: { url: string; secret: string };
 }
 
-/** Reads configuration from environment variables (load `.env` first with `dotenv/config`). */
+/** Reads configuration from environment variables (load a `.env` file first with `loadEnvFile()`). */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): OlxConfig {
   // Treat empty values (`FOO=` in .env) as unset.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''));

@@ -3,10 +3,12 @@
  * Needs the website's read-only search key: OLX_SEARCH_AUTH, or a capture in captures/
  * (`olx-lb capture`) that contains a location search. Run: npm run update-locations
  */
-import 'dotenv/config';
+import { loadEnvFile } from '../src/env.js';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { OLX_LB_LOCATIONS_SEARCH, locationsQuery } from '../src/tools/catalogFields.js';
+
+loadEnvFile();
 
 function searchKey(): string {
   if (process.env.OLX_SEARCH_AUTH) return process.env.OLX_SEARCH_AUTH;

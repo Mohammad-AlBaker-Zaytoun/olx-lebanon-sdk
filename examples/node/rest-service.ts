@@ -4,11 +4,12 @@
  *
  *   SERVER_API_KEY=… OLX_ACCESS_TOKEN=… DATABASE_URL=… npx tsx examples/node/rest-service.ts
  */
-import 'dotenv/config';
 import pg from 'pg';
-import { createLogger, createOlxClient } from 'olx-lebanon-sdk';
+import { createLogger, createOlxClient, loadEnvFile } from 'olx-lebanon-sdk';
 import { startServer } from 'olx-lebanon-sdk/server';
 import { SqlSyncStore } from '../stores/sql-store.js';
+
+loadEnvFile(); // .env in the current folder, if there is one; real environment variables win
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const logger = createLogger('info');

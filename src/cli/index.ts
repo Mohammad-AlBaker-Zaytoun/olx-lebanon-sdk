@@ -3,10 +3,10 @@
  * The `olx-lb` command: setup, login, catalog lookup, checks and the REST service.
  * Run `olx-lb help` for the list of commands.
  */
+import { loadEnvFile } from '../env.js';
 import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import dotenv from 'dotenv';
 import { OlxSdkError } from '../errors.js';
 import { CliError, UsageError, defaultContext, packageVersion, type CliContext } from './util.js';
 
@@ -92,7 +92,7 @@ export async function main(argv: string[], ctx: CliContext = defaultContext()): 
     ctx.err(`Settings file not found: ${envPath}`);
     return 1;
   }
-  if (existsSync(envPath)) dotenv.config({ path: envPath, quiet: true });
+  loadEnvFile(envPath);
 
   try {
     const code = await cmd.run(rest, ctx);

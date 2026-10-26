@@ -44,6 +44,7 @@ A library you install in a Node.js or Next.js app and call directly.
 
 ### Changed (breaking)
 
+- Node.js 20.12 or newer (was 20.0). `.env` files are read with Node's own parser, so `dotenv` is no longer a dependency; `loadEnvFile(path?)` is exported for your own scripts. Variables already set in the environment still win over the file.
 - Entry points: the main import is the library only (it loads `zod` and nothing else). The REST service moved to `olx-lebanon-sdk/server` (`buildServer`, `startServer`, `JobQueue`, webhooks), and the capture tools to `olx-lebanon-sdk/tools`.
 - `playwright` is now an optional peer dependency, needed only for `olx-lb login` and `olx-lb capture`.
 - `ListingInput.categoryKey` and `locationKey` are optional; give either the key or the OLX id.

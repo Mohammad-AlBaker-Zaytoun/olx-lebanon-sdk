@@ -43,7 +43,7 @@ console.log(ad.id, ad.status); // "117146151" "active"
 npm install olx-lebanon-sdk
 ```
 
-Node.js 20 or newer, ESM, server-side only. In Next.js, use it in route handlers, server actions and server components with the Node.js runtime, not the Edge runtime.
+Node.js 20.12 or newer, ESM, server-side only. In Next.js, use it in route handlers, server actions and server components with the Node.js runtime, not the Edge runtime.
 
 ## Sign in once
 

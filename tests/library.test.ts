@@ -336,3 +336,17 @@ describe('configuration with malformed URLs', () => {
     expect(() => sdk.loadConfig({ OLX_BASE_URL: '::::' })).toThrow(/Invalid configuration[\s\S]*OLX_BASE_URL/);
   });
 });
+
+describe('loadEnvFile', () => {
+  it("reads a .env file with Node's parser, and real environment variables win", async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const file = join(mkdtempSync(join(tmpdir(), 'olx-env-')), '.env');
+    writeFileSync(file, 'SERVER_PORT=9000\nOLX_CONTACT_NAME="My Shop # 1"\nEMPTY=\nLOG_LEVEL=debug\n');
+    const env: NodeJS.ProcessEnv = { LOG_LEVEL: 'warn' };
+    expect(sdk.loadEnvFile(file, env)).toBe(true);
+    expect(env).toEqual({ SERVER_PORT: '9000', OLX_CONTACT_NAME: 'My Shop # 1', EMPTY: '', LOG_LEVEL: 'warn' });
+    expect(sdk.loadEnvFile(join(file, '..', 'missing.env'), env)).toBe(false);
+  });
+});

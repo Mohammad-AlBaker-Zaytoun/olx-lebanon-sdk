@@ -16,6 +16,7 @@ export {
 } from './catalog/OlxCatalog.js';
 export { OlxClient, type OlxClientOptions } from './client.js';
 export { loadConfig, type OlxConfig, type WriteLimits } from './config.js';
+export { loadEnvFile } from './env.js';
 export {
   ENDPOINT_NAMES,
   buildUrl,

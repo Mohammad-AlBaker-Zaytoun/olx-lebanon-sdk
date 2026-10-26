@@ -1,6 +1,6 @@
 # Getting started
 
-From nothing to your first ad in about fifteen minutes. You need Node.js 20 or newer and an OLX Lebanon account that is yours.
+From nothing to your first ad in about fifteen minutes. You need Node.js 20.12 or newer and an OLX Lebanon account that is yours.
 
 1. [Install](#1-install)
 2. [Sign in once and get your access token](#2-sign-in-once-and-get-your-access-token)
