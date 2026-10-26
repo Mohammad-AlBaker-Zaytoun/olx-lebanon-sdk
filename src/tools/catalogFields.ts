@@ -74,7 +74,9 @@ export function describeFields(fields: OlxField[], maxChoices = Infinity): strin
       f.maxLength != null ? `max length ${f.maxLength}` : '',
     ].filter(Boolean);
     const auto = PRICE_FIELDS.has(f.attribute) ? '  (filled from the product price)' : '';
-    lines.push(`${f.isMandatory ? 'REQUIRED' : 'optional'}  ${f.attribute}  [${f.valueType}]  "${f.name}"${limits.length ? '  ' + limits.join(', ') : ''}${auto}`);
+    lines.push(
+      `${f.isMandatory ? 'REQUIRED' : 'optional'}  ${f.attribute}  [${f.valueType}]  "${f.name}"${limits.length ? '  ' + limits.join(', ') : ''}${auto}`,
+    );
     const choices = choicesOf(f);
     for (const c of choices.slice(0, maxChoices)) lines.push(`            ${JSON.stringify(c.value)} = ${c.label}`);
     if (choices.length > maxChoices) lines.push(`            … ${choices.length - maxChoices} more`);
@@ -142,7 +144,10 @@ export function locationsQuery(levels: number[]): string {
   const index = { index: 'olx-lb-production-locations-en' };
   return (
     levels
-      .flatMap((level) => [index, { query: { bool: { must: [{ term: { level } }] } }, size: 10000, sort: [{ name: { order: 'asc' } }] }])
+      .flatMap((level) => [
+        index,
+        { query: { bool: { must: [{ term: { level } }] } }, size: 10000, sort: [{ name: { order: 'asc' } }] },
+      ])
       .map((line) => JSON.stringify(line))
       .join('\n') + '\n'
   );
@@ -151,7 +156,9 @@ export function locationsQuery(levels: number[]): string {
 /** Reads the locations out of an msearch response. */
 export function parseLocations(raw: unknown): OlxLocation[] {
   const responses = (raw as { responses?: Array<{ hits?: { hits?: Array<{ _source?: OlxLocation }> } }> })?.responses ?? [];
-  return responses.flatMap((r) => (r.hits?.hits ?? []).map((h) => h._source).filter((s): s is OlxLocation => !!s && typeof s.id === 'number'));
+  return responses.flatMap((r) =>
+    (r.hits?.hits ?? []).map((h) => h._source).filter((s): s is OlxLocation => !!s && typeof s.id === 'number'),
+  );
 }
 
 /**

@@ -63,7 +63,16 @@ describe('olxLebanonAdapter: request bodies', () => {
       source: 'nova',
       category_id: '219',
       images: [
-        { id: null, external_id: 'a-b', image_name: 'a-b', order_index: 0, is_main: true, url: OLX_LB_IMAGE_BASE + 'a-b', width: 2000, height: 1333 },
+        {
+          id: null,
+          external_id: 'a-b',
+          image_name: 'a-b',
+          order_index: 0,
+          is_main: true,
+          url: OLX_LB_IMAGE_BASE + 'a-b',
+          width: 2000,
+          height: 1333,
+        },
       ],
       description: 'Healthy and friendly',
       videos: [],
@@ -105,12 +114,17 @@ describe('olxLebanonAdapter: request bodies', () => {
   });
 
   it('reads photo ids from a my-ads item', () => {
-    expect(olxLebanonAdapter.readPhotoIds!({ photos: [{ id: 18030972, externalID: 'x' }, { id: 18031460 }] })).toEqual(['18030972', '18031460']);
+    expect(olxLebanonAdapter.readPhotoIds!({ photos: [{ id: 18030972, externalID: 'x' }, { id: 18031460 }] })).toEqual([
+      '18030972',
+      '18031460',
+    ]);
     expect(olxLebanonAdapter.readPhotoIds!({})).toEqual([]);
   });
 
   it('refuses to create without the account id', () => {
-    expect(() => olxLebanonAdapter.buildAdPayload(listing, [], { ...ctx, images: [], account: undefined })).toThrow(/account id is unknown/);
+    expect(() => olxLebanonAdapter.buildAdPayload(listing, [], { ...ctx, images: [], account: undefined })).toThrow(
+      /account id is unknown/,
+    );
   });
 });
 
@@ -121,7 +135,9 @@ describe('olxLebanonAdapter: responses', () => {
   });
 
   it('reads the state from edit-ad', () => {
-    const ad = olxLebanonAdapter.parseAd({ data: { state: 'limited', ad: { id: 5_000_001, externalID: AD, state: 'limited', title: 'x' } } });
+    const ad = olxLebanonAdapter.parseAd({
+      data: { state: 'limited', ad: { id: 5_000_001, externalID: AD, state: 'limited', title: 'x' } },
+    });
     expect(ad).toMatchObject({ id: AD, status: 'limited', title: 'x' });
   });
 
@@ -141,9 +157,15 @@ describe('olxLebanonAdapter: responses', () => {
 
   it('reads the account, whatever shape the name has', () => {
     const parse = olxLebanonAdapter.parseAccount!;
-    expect(parse({ data: { externalID: USER, name: 'Store', phoneNumber: '+9613' } })).toEqual({ externalId: USER, name: 'Store', phone: '+9613' });
+    expect(parse({ data: { externalID: USER, name: 'Store', phoneNumber: '+9613' } })).toEqual({
+      externalId: USER,
+      name: 'Store',
+      phone: '+9613',
+    });
     expect(parse({ data: { externalID: USER, name: { en: 'Store EN' }, first_name: null } }).name).toBe('Store EN');
-    expect(parse({ data: { externalID: USER, name: { ar: 'متجر', en: 'Store EN' }, first_name: 'Mo', last_name: 'Z' } }).name).toBe('Store EN');
+    expect(
+      parse({ data: { externalID: USER, name: { ar: 'متجر', en: 'Store EN' }, first_name: 'Mo', last_name: 'Z' } }).name,
+    ).toBe('Store EN');
     expect(parse({ data: { externalID: USER, name: {}, first_name: 'Mo', last_name: 'Z' } }).name).toBe('Mo Z');
     expect(() => parse({ data: {} })).toThrow(/externalID/);
   });
@@ -169,7 +191,9 @@ describe('olxLebanonAdapter: photo uploads', () => {
   it('uses the stored file name from the upload URL (OLX adds .jpg)', () => {
     const info = { width: 1, height: 1, contentType: 'image/png' };
     const s3 = 'https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/';
-    expect(flow.toUploadedImage('n-1', { ...info, uploadUrl: `${s3}n-1.jpg?X-Amz-Signature=x` }).url).toBe(OLX_LB_IMAGE_BASE + 'n-1.jpg');
+    expect(flow.toUploadedImage('n-1', { ...info, uploadUrl: `${s3}n-1.jpg?X-Amz-Signature=x` }).url).toBe(
+      OLX_LB_IMAGE_BASE + 'n-1.jpg',
+    );
     expect(flow.toUploadedImage('n-1', { ...info, uploadUrl: `${s3}n-1.webp` }).url).toBe(OLX_LB_IMAGE_BASE + 'n-1.webp');
     // Anything unexpected in the URL falls back to the captured format.
     expect(flow.toUploadedImage('n-1', { ...info, uploadUrl: `${s3}other.jpg` }).url).toBe(OLX_LB_IMAGE_BASE + 'n-1.jpg');
@@ -209,7 +233,9 @@ describe('session token', () => {
 
   it('falls back to the accessToken cookie when the header is another scheme', () => {
     const token = jwt({ exp: 2_000_000_000 });
-    expect(olxLebanonBearer({ ...base, headers: { authorization: 'Basic c2VhcmNo' }, cookies: [cookie(token)] }, 1_800_000_000)).toBe(token);
+    expect(
+      olxLebanonBearer({ ...base, headers: { authorization: 'Basic c2VhcmNo' }, cookies: [cookie(token)] }, 1_800_000_000),
+    ).toBe(token);
   });
 
   it('ignores an expired cookie and cookies of other sites', () => {
@@ -228,20 +254,34 @@ describe('session token', () => {
 describe('imageSize', () => {
   it('reads PNG, GIF, JPEG and WebP headers', () => {
     expect(imageSize(png(2000, 1333))).toEqual({ width: 2000, height: 1333, type: 'image/png' });
-    expect(imageSize(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x40, 0x01, 0xf0, 0x00]))).toEqual({ width: 320, height: 240, type: 'image/gif' });
+    expect(imageSize(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x40, 0x01, 0xf0, 0x00]))).toEqual({
+      width: 320,
+      height: 240,
+      type: 'image/gif',
+    });
     // SOI, an APP0 segment, then SOF0 with height 600 / width 800.
-    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x58, 0x03, 0x20, 0x03, 0, 0, 0]);
+    const jpeg = new Uint8Array([
+      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x58, 0x03, 0x20, 0x03, 0, 0, 0,
+    ]);
     expect(imageSize(jpeg)).toEqual({ width: 800, height: 600, type: 'image/jpeg' });
     const webp = new Uint8Array(30);
-    webp.set([...'RIFF'].map((c) => c.charCodeAt(0)), 0);
-    webp.set([...'WEBPVP8X'].map((c) => c.charCodeAt(0)), 8);
+    webp.set(
+      [...'RIFF'].map((c) => c.charCodeAt(0)),
+      0,
+    );
+    webp.set(
+      [...'WEBPVP8X'].map((c) => c.charCodeAt(0)),
+      8,
+    );
     webp.set([0x1f, 0x03, 0x00, 0x57, 0x02, 0x00], 24); // 800 x 600, stored minus one
     expect(imageSize(webp)).toEqual({ width: 800, height: 600, type: 'image/webp' });
   });
 
   it('swaps width and height for a JPEG rotated by EXIF (orientation 6), like a browser', () => {
     // APP1 "Exif\0\0" + big-endian TIFF with one IFD0 entry: Orientation (0x0112) = 6.
-    const tiff = [0x4d, 0x4d, 0x00, 0x2a, 0, 0, 0, 8, 0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0, 0, 0, 1, 0x00, 0x06, 0, 0, 0, 0, 0, 0];
+    const tiff = [
+      0x4d, 0x4d, 0x00, 0x2a, 0, 0, 0, 8, 0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0, 0, 0, 1, 0x00, 0x06, 0, 0, 0, 0, 0, 0,
+    ];
     const app1 = [0xff, 0xe1, 0x00, 2 + 6 + tiff.length, ...[...'Exif'].map((c) => c.charCodeAt(0)), 0, 0, ...tiff];
     const sof = [0xff, 0xc0, 0x00, 0x11, 0x08, 0x0b, 0xb8, 0x0f, 0xa0, 0x03, 0, 0, 0]; // 4000 x 3000
     const jpeg = new Uint8Array([0xff, 0xd8, ...app1, ...sof]);
@@ -259,12 +299,21 @@ describe('catalog valueMap', () => {
     const { CatalogMapper } = await import('../src/mapping/CatalogMapper.js');
     const mapper = new CatalogMapper(
       parseCatalog({
-        categories: { phones: { olxCategoryId: '9', attributeMap: { condition: 'new_used' }, valueMap: { condition: { new: '1', used: '2' } } } },
+        categories: {
+          phones: {
+            olxCategoryId: '9',
+            attributeMap: { condition: 'new_used' },
+            valueMap: { condition: { new: '1', used: '2' } },
+          },
+        },
         locations: { beirut: { olxLocationId: '47' } },
       }),
     );
     const base = { title: 't', description: 'd', price: 1, categoryKey: 'phones', locationKey: 'beirut' };
-    expect(mapper.resolve({ ...base, attributes: { condition: 'used', color: 'red' } }).attributes).toEqual({ new_used: '2', color: 'red' });
+    expect(mapper.resolve({ ...base, attributes: { condition: 'used', color: 'red' } }).attributes).toEqual({
+      new_used: '2',
+      color: 'red',
+    });
     expect(mapper.resolve({ ...base, attributes: { condition: 'refurbished' } }).attributes).toEqual({ new_used: 'refurbished' });
     // Case and surrounding spaces don't matter.
     expect(mapper.resolve({ ...base, attributes: { condition: ' USED ' } }).attributes).toEqual({ new_used: '2' });
@@ -273,7 +322,10 @@ describe('catalog valueMap', () => {
   it("checks the category's USD price range before posting", async () => {
     const { CatalogMapper } = await import('../src/mapping/CatalogMapper.js');
     const mapper = new CatalogMapper(
-      parseCatalog({ categories: { phones: { olxCategoryId: '9', priceLimits: { min: 10, max: 10000 } } }, locations: { b: { olxLocationId: '47' } } }),
+      parseCatalog({
+        categories: { phones: { olxCategoryId: '9', priceLimits: { min: 10, max: 10000 } } },
+        locations: { b: { olxLocationId: '47' } },
+      }),
     );
     const base = { title: 't', description: 'd', categoryKey: 'phones', locationKey: 'b' };
     expect(() => mapper.resolve({ ...base, price: 5 })).toThrow(/below OLX's minimum of 10/);
@@ -334,30 +386,54 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
       const u = new URL(url);
       if (u.pathname === '/api/v1/user') {
         if (userFailures-- > 0) return new Response('busy', { status: 503 });
-        return jsonResponse({ status: 'OK', data: { externalID: userExternalId, name: { ar: 'متجر زيتون', en: 'Zaytoon Store' }, phoneNumber: '+96170000000' } });
+        return jsonResponse({
+          status: 'OK',
+          data: { externalID: userExternalId, name: { ar: 'متجر زيتون', en: 'Zaytoon Store' }, phoneNumber: '+96170000000' },
+        });
       }
       if (u.pathname === '/api/images/get-signed-url/') {
         const name = u.searchParams.get('imageName')!;
-        return jsonResponse({ status: 'OK', data: { url: opts.uploadUrl ?? `https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/${name}.jpg?X-Amz-Signature=s3cr3t`, fields: { Host: ['x'] } } });
+        return jsonResponse({
+          status: 'OK',
+          data: {
+            url: opts.uploadUrl ?? `https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/${name}.jpg?X-Amz-Signature=s3cr3t`,
+            fields: { Host: ['x'] },
+          },
+        });
       }
       if (u.hostname.endsWith('amazonaws.com')) {
         if (opts.s3 === 'network') throw new TypeError('fetch failed');
         return new Response(null, { status: opts.s3 ?? 200 });
       }
       if (u.pathname === '/api/v1/post-ad') {
-        return jsonResponse({ status: 'OK', data: { ad: { externalID: AD, id: 5_000_001, categoryID: 25 }, next_page: { post: true } } });
+        return jsonResponse({
+          status: 'OK',
+          data: { ad: { externalID: AD, id: 5_000_001, categoryID: 25 }, next_page: { post: true } },
+        });
       }
       if (u.pathname === '/api/v1/user/my-ads') {
         // What the store holds while the lookup runs: the link must already be saved.
         seenAtLookup.push((await syncStore.get('P-1'))?.adId);
         if (opts.myAds === 'error') return new Response('down', { status: 503 });
         if (opts.myAds === 'not-listed') {
-          return jsonResponse({ count: 99, next: 'https://api-prod.olx-dubizzle.com/api/v1/user/my-ads?page=next', results: [{ id: 1, externalID: '117999999', state: 'active' }] });
+          return jsonResponse({
+            count: 99,
+            next: 'https://api-prod.olx-dubizzle.com/api/v1/user/my-ads?page=next',
+            results: [{ id: 1, externalID: '117999999', state: 'active' }],
+          });
         }
         return jsonResponse({
           count: 1,
           next: null,
-          results: [{ id: 5_000_001, externalID: AD, state: opts.state ?? 'limited', title: 'Budgie pair', photos: [{ id: 18_000_001, externalID: 'old', orderIndex: 0 }] }],
+          results: [
+            {
+              id: 5_000_001,
+              externalID: AD,
+              state: opts.state ?? 'limited',
+              title: 'Budgie pair',
+              photos: [{ id: 18_000_001, externalID: 'old', orderIndex: 0 }],
+            },
+          ],
         });
       }
       if (u.pathname === `/api/v1/edit-ad/${AD}`) {
@@ -366,7 +442,9 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
       if (u.pathname === `/api/v1/ads/${AD}/delete`) return new Response(null, { status: 204 });
       return new Response('not found', { status: 404 });
     });
-    const imageFetch = vi.fn(async () => new Response((opts.imageBytes ?? png(2000, 1333)) as BodyInit, { headers: { 'content-type': 'image/png' } })) as unknown as typeof fetch;
+    const imageFetch = vi.fn(
+      async () => new Response((opts.imageBytes ?? png(2000, 1333)) as BodyInit, { headers: { 'content-type': 'image/png' } }),
+    ) as unknown as typeof fetch;
     const client = new OlxClient({
       baseUrl: 'https://www.olx.com.lb',
       endpoints,
@@ -471,7 +549,9 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     await store.save({ ...session, savedAt: '2027-01-01T00:00:00.000Z' }); // `npm run login`
     await client.sync.upsert('P-2', product);
     expect(pathsOf(calls).filter((p) => p === 'GET /api/v1/user')).toHaveLength(2);
-    const posts = calls.filter((c) => c.url.endsWith('/post-ad')).map((c) => JSON.parse(String(c.body)) as { user_external_id: string });
+    const posts = calls
+      .filter((c) => c.url.endsWith('/post-ad'))
+      .map((c) => JSON.parse(String(c.body)) as { user_external_id: string });
     expect(posts.map((p) => p.user_external_id)).toEqual([USER, OTHER]);
   });
 
@@ -513,7 +593,18 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
       state: 'pending',
       source: 'nova',
       category_id: '219',
-      images: [{ id: null, external_id: name, image_name: name, order_index: 0, is_main: true, url: `${OLX_LB_IMAGE_BASE}${name}.jpg`, width: 2000, height: 1333 }],
+      images: [
+        {
+          id: null,
+          external_id: name,
+          image_name: name,
+          order_index: 0,
+          is_main: true,
+          url: `${OLX_LB_IMAGE_BASE}${name}.jpg`,
+          width: 2000,
+          height: 1333,
+        },
+      ],
       description: 'Healthy and friendly',
       videos: [],
       title: 'Budgie pair',
@@ -571,7 +662,10 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     await client.sync.upsert('P-1', { ...product, price: 99 }); // same photos
     expect(calls.filter((c) => c.method === 'PUT').length).toBe(uploadsAfterCreate);
     expect(calls.filter((c) => c.url.includes('get-signed-url')).length).toBe(uploadsAfterCreate);
-    const edit = JSON.parse(String(calls.filter((c) => c.method === 'PATCH').at(-1)!.body)) as { images: unknown[]; order_photos: unknown[] };
+    const edit = JSON.parse(String(calls.filter((c) => c.method === 'PATCH').at(-1)!.body)) as {
+      images: unknown[];
+      order_photos: unknown[];
+    };
     expect(edit).toMatchObject({ images: [], order_photos: [] });
 
     await client.sync.upsert('P-1', { ...product, price: 98, images: [{ url: 'https://cdn.zaytoon.test/other.png' }] });
@@ -579,7 +673,10 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     expect((await client.syncStore.get('P-1'))?.imagesHash).toBeDefined();
   });
 
-  for (const uploadUrl of ['https://evil.example/steal?x=1', 'https://attacker-bucket.s3.us-east-1.amazonaws.com/temp/x.jpg?sig=1']) {
+  for (const uploadUrl of [
+    'https://evil.example/steal?x=1',
+    'https://attacker-bucket.s3.us-east-1.amazonaws.com/temp/x.jpg?sig=1',
+  ]) {
     it(`refuses an upload URL outside OLX's bucket (${new URL(uploadUrl).host}): nothing uploaded, no ad sent, not parked`, async () => {
       const { client, calls } = setup({ uploadUrl });
       await expect(client.sync.upsert('P-1', product)).rejects.toThrow(/unexpected host or path/);

@@ -200,7 +200,13 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const status = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
     // Client errors (bad JSON, wrong content type) are safe to explain; internal errors are not.
     if (status === 500) {
-      deps.logger?.error('Request failed', { requestId: req.id, method: req.method, path: req.routeOptions.url, error: err.message, stack: err.stack });
+      deps.logger?.error('Request failed', {
+        requestId: req.id,
+        method: req.method,
+        path: req.routeOptions.url,
+        error: err.message,
+        stack: err.stack,
+      });
       return fail(req, reply, 500, 'internal_error', 'Internal error');
     }
     return fail(req, reply, status, 'bad_request', err.message);

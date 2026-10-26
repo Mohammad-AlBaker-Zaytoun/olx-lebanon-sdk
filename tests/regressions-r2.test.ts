@@ -44,7 +44,7 @@ function client(transport: Transport) {
     writeLimits: { minIntervalMs: 0, jitterMs: 0, maxPerHour: 100 },
     clock: fakeClock(),
     transport,
-    imageFetch: (async () => new Response('x', { headers: { 'content-type': 'image/jpeg' } })) as typeof fetch,
+    imageFetch: async () => new Response('x', { headers: { 'content-type': 'image/jpeg' } }),
     allowedImageHosts: ['zaytoon.test'],
   });
   return { c, syncStore };
@@ -63,7 +63,9 @@ function brokenBody201(): Response {
 
 describe('round 2: create outcomes that must park, not repost', () => {
   it('a 2xx create whose body cannot be read is uncertain (parked), not "not created"', async () => {
-    const transport = vi.fn<Transport>(async (url) => (url.endsWith('/api/images') ? jsonResponse({ id: 'i' }) : brokenBody201()));
+    const transport = vi.fn<Transport>(async (url) =>
+      url.endsWith('/api/images') ? jsonResponse({ id: 'i' }) : brokenBody201(),
+    );
     const { c, syncStore } = client(transport);
     await expect(c.sync.upsert('P1', product)).rejects.toBeInstanceOf(UncertainWriteError);
     expect((await syncStore.get('P1'))?.syncState).toBe('needs_reconcile');
@@ -84,6 +86,7 @@ describe('round 2: create outcomes that must park, not repost', () => {
 describe('round 2: the creating marker is written only right before createAd is sent', () => {
   it('no marker during images / write-slot wait; marker present when createAd leaves', async () => {
     const seen: Array<[string, string | undefined]> = [];
+    // eslint-disable-next-line prefer-const -- assigned after the transport that reads it is built
     let store!: MemorySyncStore;
     const transport = vi.fn<Transport>(async (url) => {
       seen.push([url.endsWith('/api/images') ? 'image' : 'createAd', (await store.get('P3'))?.syncState]);
@@ -213,7 +216,7 @@ describe('round 2: security', () => {
     const up = new ImageUploader({
       http: {} as never,
       adapter: placeholderAdapter,
-      fetchImpl: vi.fn() as unknown as typeof fetch,
+      fetchImpl: vi.fn(),
       resolveHost: async () => ['93.184.216.34'],
     });
     await expect(up.upload({ url: 'https://user:pa55@cdn.example/a.png' })).rejects.toThrow(/credentials/);
@@ -238,7 +241,8 @@ describe('round 2: security', () => {
   it('caps the queue (REST answers 429)', async () => {
     let release!: () => void;
     const { app } = await server(() => new Promise<void>((r) => (release = r)), 2);
-    const put = (id: string) => app.inject({ method: 'PUT', url: `/v1/products/${id}/listing`, headers: auth, payload: restBody });
+    const put = (id: string) =>
+      app.inject({ method: 'PUT', url: `/v1/products/${id}/listing`, headers: auth, payload: restBody });
     await put('running'); // taken by the worker
     expect((await put('A')).statusCode).toBe(202);
     expect((await put('B')).statusCode).toBe(202);
@@ -287,7 +291,10 @@ describe('round 2: security', () => {
       log: {
         entries: [
           {
-            request: { method: 'POST', url: 'https://www.olx.com.lb/api/users/+96170123456/magic/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln' },
+            request: {
+              method: 'POST',
+              url: 'https://www.olx.com.lb/api/users/+96170123456/magic/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln',
+            },
             response: { status: 200 },
           },
         ],
@@ -412,7 +419,15 @@ describe('round 2: shutdown and storage', () => {
     const st = new JsonFileSyncStore(join(dir, 'store.json'));
     expect(await st.all()).toEqual([]); // loads fine (no file yet)
     writeFileSync(dir, 'x'); // now a FILE sits where the data folder should be → the save fails
-    const rec = { productId: 'P', adId: '', status: 'unknown' as const, syncState: 'creating' as const, contentHash: 'h', createdAt: 't', lastSyncedAt: 't' };
+    const rec = {
+      productId: 'P',
+      adId: '',
+      status: 'unknown' as const,
+      syncState: 'creating' as const,
+      contentHash: 'h',
+      createdAt: 't',
+      lastSyncedAt: 't',
+    };
     await expect(st.set(rec)).rejects.toThrow();
     expect(await st.get('P')).toBeUndefined();
   });

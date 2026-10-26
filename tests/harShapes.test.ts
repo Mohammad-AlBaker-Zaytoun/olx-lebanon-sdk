@@ -59,7 +59,10 @@ const har: HarFull = {
         },
         response: {
           status: 200,
-          content: { mimeType: 'application/json', text: JSON.stringify({ id: 117145974, state: 'pending', externalID: '117145974' }) },
+          content: {
+            mimeType: 'application/json',
+            text: JSON.stringify({ id: 117145974, state: 'pending', externalID: '117145974' }),
+          },
         },
       },
       {
@@ -75,7 +78,10 @@ const har: HarFull = {
         request: { method: 'GET', url: 'https://api-prod.olx-dubizzle.com/api/v1/categoryFields?categoryExternalIDs=1453' },
         response: {
           status: 200,
-          content: { mimeType: 'application/json', text: JSON.stringify({ fields: [{ name: 'Condition', attribute: 'condition', choices: ['new', 'used'] }] }) },
+          content: {
+            mimeType: 'application/json',
+            text: JSON.stringify({ fields: [{ name: 'Condition', attribute: 'condition', choices: ['new', 'used'] }] }),
+          },
         },
       },
       {
@@ -141,7 +147,16 @@ describe('buildShapeReport', () => {
 describe('path ids', () => {
   it('shows how many digits a path id has, not the id', () => {
     const { text } = buildShapeReport(
-      { log: { entries: [{ request: { method: 'POST', url: 'https://api-prod.olx-dubizzle.com/api/v1/ads/117145974/delete' }, response: { status: 204 } }] } },
+      {
+        log: {
+          entries: [
+            {
+              request: { method: 'POST', url: 'https://api-prod.olx-dubizzle.com/api/v1/ads/117145974/delete' },
+              response: { status: 204 },
+            },
+          ],
+        },
+      },
       { hosts: ['olx-dubizzle.com'] },
     );
     expect(text).toContain('POST api-prod.olx-dubizzle.com/api/v1/ads/{id:9 digits}/delete');
@@ -151,7 +166,10 @@ describe('path ids', () => {
 
 describe('shapeOf', () => {
   it('masks values under secret-looking keys and shortens arrays', () => {
-    expect(shapeOf({ accessToken: 'x', items: [1, 2, 3, 4] })).toEqual({ accessToken: '<masked string>', items: [1, 2, '…+2 more'] });
+    expect(shapeOf({ accessToken: 'x', items: [1, 2, 3, 4] })).toEqual({
+      accessToken: '<masked string>',
+      items: [1, 2, '…+2 more'],
+    });
     expect(shapeOf({ contact_person: { name: 'Mo', phone: [70123456, 3123456] } })).toEqual({
       contact_person: { name: '<masked string>', phone: ['<masked number>', '…+1 more'] },
     });
@@ -166,7 +184,7 @@ describe('shapeOf', () => {
 
 describe('summarizeHar and uploads', () => {
   it('keeps a PUT to an image path (an upload) but still drops static GETs', () => {
-    const calls = summarizeHar(har as never);
+    const calls = summarizeHar(har);
     expect(calls.some((c) => c.method === 'PUT' && c.pattern.includes('amazonaws.com/uploads/{id}'))).toBe(true);
   });
 });

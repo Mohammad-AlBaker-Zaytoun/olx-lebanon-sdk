@@ -53,7 +53,9 @@ export const openApiDocument = {
         operationId: 'getHealth',
         summary: 'Liveness check',
         security: [],
-        responses: { '200': json({ type: 'object', properties: { ok: { const: true } }, required: ['ok'] }, 'The service is up') },
+        responses: {
+          '200': json({ type: 'object', properties: { ok: { const: true } }, required: ['ok'] }, 'The service is up'),
+        },
       },
     },
     '/v1/openapi.json': {
@@ -93,7 +95,11 @@ export const openApiDocument = {
         tags: ['Listings'],
         operationId: 'getListing',
         summary: "A product's link to its ad",
-        responses: { '200': json(ref('SyncRecord'), 'The link'), '404': errorResponse('No link for this product (`not_found`)'), ...common },
+        responses: {
+          '200': json(ref('SyncRecord'), 'The link'),
+          '404': errorResponse('No link for this product (`not_found`)'),
+          ...common,
+        },
       },
       put: {
         tags: ['Listings'],
@@ -145,7 +151,15 @@ export const openApiDocument = {
           'the next sync creates one. Both refuse unsafe cases with 409 unless `replace` / `force` is set.',
         requestBody: { required: true, content: { 'application/json': { schema: ref('Resolution') } } },
         responses: {
-          '200': json({ oneOf: [ref('SyncRecord'), { type: 'object', properties: { forgotten: { type: 'boolean' } }, required: ['forgotten'] }] }, 'Resolved'),
+          '200': json(
+            {
+              oneOf: [
+                ref('SyncRecord'),
+                { type: 'object', properties: { forgotten: { type: 'boolean' } }, required: ['forgotten'] },
+              ],
+            },
+            'Resolved',
+          ),
           '400': errorResponse('Invalid product id or body (`invalid_product_id`, `invalid_resolution`)'),
           '409': errorResponse('Would orphan or share an ad (`link_conflict`, `healthy_link`; `details.adId`)'),
           ...common,
@@ -158,7 +172,11 @@ export const openApiDocument = {
         tags: ['Jobs'],
         operationId: 'getJob',
         summary: 'A queued write and its outcome',
-        responses: { '200': json(ref('Job'), 'The job'), '404': errorResponse('Unknown or expired job (`not_found`)'), ...common },
+        responses: {
+          '200': json(ref('Job'), 'The job'),
+          '404': errorResponse('Unknown or expired job (`not_found`)'),
+          ...common,
+        },
       },
     },
   },
@@ -176,13 +194,28 @@ export const openApiDocument = {
           title: { type: 'string', minLength: 1, maxLength: 70 },
           description: { type: 'string', minLength: 1, maxLength: 4096 },
           price: {
-            oneOf: [{ type: 'number', minimum: 0 }, { type: 'string', pattern: '^\\s*\\d+(\\.\\d+)?\\s*$' }],
+            oneOf: [
+              { type: 'number', minimum: 0 },
+              { type: 'string', pattern: '^\\s*\\d+(\\.\\d+)?\\s*$' },
+            ],
             description: 'A number, or a decimal string such as "799.00"',
           },
           currency: { type: 'string', enum: ['USD', 'LBP'], default: 'USD' },
-          categoryId: { oneOf: [{ type: 'string', pattern: '^\\d+$' }, { type: 'integer', minimum: 1 }], examples: ['175'] },
+          categoryId: {
+            oneOf: [
+              { type: 'string', pattern: '^\\d+$' },
+              { type: 'integer', minimum: 1 },
+            ],
+            examples: ['175'],
+          },
           categoryKey: { type: 'string', minLength: 1 },
-          locationId: { oneOf: [{ type: 'string', pattern: '^\\d+$' }, { type: 'integer', minimum: 1 }], examples: ['47'] },
+          locationId: {
+            oneOf: [
+              { type: 'string', pattern: '^\\d+$' },
+              { type: 'integer', minimum: 1 },
+            ],
+            examples: ['47'],
+          },
           locationKey: { type: 'string', minLength: 1 },
           attributes: {
             description: "The category's fields (OLX names and choice values with categoryId). An empty array means none.",

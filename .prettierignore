@@ -1,0 +1,9 @@
+dist/
+coverage/
+captures/
+data/
+logs/
+package-lock.json
+openapi.json
+src/data/locations.ts
+*.md

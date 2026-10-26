@@ -75,6 +75,7 @@ export {
   loadCatalog,
   parseCatalog,
   type Catalog,
+  type CatalogInput,
   type MappedListing,
 } from './mapping/CatalogMapper.js';
 export {
@@ -104,10 +105,4 @@ export {
   type UpsertOptions,
   type UpsertResult,
 } from './sync/SyncService.js';
-export {
-  JsonFileSyncStore,
-  MemorySyncStore,
-  type SyncRecord,
-  type SyncState,
-  type SyncStore,
-} from './sync/SyncStore.js';
+export { JsonFileSyncStore, MemorySyncStore, type SyncRecord, type SyncState, type SyncStore } from './sync/SyncStore.js';

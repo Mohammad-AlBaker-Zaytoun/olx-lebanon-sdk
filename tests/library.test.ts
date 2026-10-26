@@ -22,22 +22,40 @@ function mockOlx() {
   const calls: Array<{ method: string; url: string; headers: Record<string, string>; body?: unknown }> = [];
   const fetch = vi.fn(async (url: string | URL | Request, init: RequestInit = {}) => {
     const u = new URL(String(url));
-    calls.push({ method: init.method ?? 'GET', url: u.toString(), headers: (init.headers ?? {}) as Record<string, string>, body: init.body });
-    if (u.pathname === '/api/v1/user') return jsonResponse({ data: { externalID: USER, name: { en: 'Shop' }, phoneNumber: '+96170000000' } });
+    calls.push({
+      method: init.method ?? 'GET',
+      url: u.toString(),
+      headers: (init.headers ?? {}) as Record<string, string>,
+      body: init.body,
+    });
+    if (u.pathname === '/api/v1/user')
+      return jsonResponse({ data: { externalID: USER, name: { en: 'Shop' }, phoneNumber: '+96170000000' } });
     if (u.pathname === '/api/images/get-signed-url/') {
-      return jsonResponse({ data: { url: `https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/${u.searchParams.get('imageName')}.jpg?X-Amz-Signature=s` } });
+      return jsonResponse({
+        data: {
+          url: `https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/${u.searchParams.get('imageName')}.jpg?X-Amz-Signature=s`,
+        },
+      });
     }
     if (u.hostname.endsWith('amazonaws.com')) return new Response(null, { status: 200 });
     if (u.pathname === '/api/v1/post-ad') return jsonResponse({ data: { ad: { externalID: AD, id: 1 } } });
-    if (u.pathname === `/api/v1/edit-ad/${AD}`) return jsonResponse({ data: { state: 'pending', ad: { externalID: AD, state: 'pending' } } });
+    if (u.pathname === `/api/v1/edit-ad/${AD}`)
+      return jsonResponse({ data: { state: 'pending', ad: { externalID: AD, state: 'pending' } } });
     if (u.pathname === `/api/v1/ads/${AD}/delete`) return new Response(null, { status: 204 });
     if (u.pathname === '/api/v1/user/my-ads') {
-      return jsonResponse({ next: null, results: [{ id: 1, externalID: AD, state: 'active', photos: [{ id: 18000001 }, { id: 18000002 }] }] });
+      return jsonResponse({
+        next: null,
+        results: [{ id: 1, externalID: AD, state: 'active', photos: [{ id: 18000001 }, { id: 18000002 }] }],
+      });
     }
     return new Response('nope', { status: 404 });
   });
   const imageFetch = vi.fn(async () => new Response(png(800, 600) as BodyInit, { headers: { 'content-type': 'image/png' } }));
-  return { calls, fetch: fetch as unknown as typeof globalThis.fetch, imageFetch: imageFetch as unknown as typeof globalThis.fetch };
+  return {
+    calls,
+    fetch: fetch as unknown as typeof globalThis.fetch,
+    imageFetch: imageFetch as unknown as typeof globalThis.fetch,
+  };
 }
 
 const ad = {
@@ -172,12 +190,15 @@ describe('ids or catalog keys', () => {
 
   it('refuses both or neither', () => {
     expect(() => mapper.resolve({ ...base, categoryId: 175, categoryKey: 'laptops', locationId: 47 })).toThrow(/not both/);
-    expect(() => mapper.resolve({ ...base, locationId: 47 } as never)).toThrow(/Give the category/);
+    expect(() => mapper.resolve({ ...base, locationId: 47 })).toThrow(/Give the category/);
   });
 
   it('the REST schema accepts either form and numbers as ids', () => {
     const rest = { ...base, images: [] };
-    expect(RestListingSchema.parse({ ...rest, categoryId: 175, locationId: '47' })).toMatchObject({ categoryId: '175', locationId: '47' });
+    expect(RestListingSchema.parse({ ...rest, categoryId: 175, locationId: '47' })).toMatchObject({
+      categoryId: '175',
+      locationId: '47',
+    });
     expect(RestListingSchema.safeParse({ ...rest, categoryKey: 'x', locationKey: 'y' }).success).toBe(true);
     expect(RestListingSchema.safeParse({ ...rest, categoryKey: 'x', categoryId: 1, locationKey: 'y' }).success).toBe(false);
     expect(RestListingSchema.safeParse({ ...rest, locationKey: 'y' }).success).toBe(false);
@@ -199,7 +220,14 @@ describe('client.catalog', () => {
     '175': {
       flatFields: [
         { attribute: 'price', name: 'Price', valueType: 'float', isMandatory: false, roles: [], minValue: 5, maxValue: 50000 },
-        { attribute: 'make', name: 'Brand', valueType: 'enum', isMandatory: true, roles: [], choices: [{ value: '3', label: 'Dell' }] },
+        {
+          attribute: 'make',
+          name: 'Brand',
+          valueType: 'enum',
+          isMandatory: true,
+          roles: [],
+          choices: [{ value: '3', label: 'Dell' }],
+        },
         { attribute: 'hot', name: 'Hot', valueType: 'enum', isMandatory: false, roles: ['exclude_from_post_an_ad'] },
       ],
     },
@@ -215,10 +243,12 @@ describe('client.catalog', () => {
     ]);
     expect(await catalog.findCategories('electronics')).toEqual([]); // not a leaf
     await catalog.categories();
-    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([u]) => !String(u).includes('Fields'))).toHaveLength(1);
+    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([u]) => !String(u).includes('Fields'))).toHaveLength(
+      1,
+    );
   });
 
-  it('describes a category\'s fields, without the hidden ones', async () => {
+  it("describes a category's fields, without the hidden ones", async () => {
     const f = await new OlxCatalog({ fetch }).fields(175);
     expect(f.map((x) => x.attribute)).toEqual(['price', 'make']);
     expect(f[1]).toMatchObject({ required: true, choices: [{ value: '3', label: 'Dell' }], filledFromPrice: false });
@@ -272,24 +302,37 @@ describe('package entry points', () => {
 });
 
 describe('checks before anything is sent', () => {
-  const olx = createOlxClient({ accessToken: 'x'.repeat(40), fetch: vi.fn(async () => jsonResponse({})) as unknown as typeof fetch });
+  const olx = createOlxClient({
+    accessToken: 'x'.repeat(40),
+    fetch: vi.fn(async () => jsonResponse({})) as unknown as typeof fetch,
+  });
   const ad = { title: 'Laptop', description: 'New', price: 899, categoryId: '175', locationId: '47' };
 
   it("applies OLX's title, description and photo limits without a catalog", async () => {
-    await expect(olx.ads.create({ ...ad, title: 'x'.repeat(71) })).rejects.toMatchObject({ code: 'invalid_listing', issues: [expect.stringMatching(/OLX allows 70/)] });
-    await expect(olx.ads.create({ ...ad, images: Array.from({ length: 21 }, (_, i) => ({ url: `https://a.example/${i}.jpg` })) })).rejects.toMatchObject({ code: 'invalid_listing' });
+    await expect(olx.ads.create({ ...ad, title: 'x'.repeat(71) })).rejects.toMatchObject({
+      code: 'invalid_listing',
+      issues: [expect.stringMatching(/OLX allows 70/)],
+    });
+    await expect(
+      olx.ads.create({ ...ad, images: Array.from({ length: 21 }, (_, i) => ({ url: `https://a.example/${i}.jpg` })) }),
+    ).rejects.toMatchObject({ code: 'invalid_listing' });
   });
 
   it('a missing photo file is image_upload_failed, naming the file', async () => {
     const { ImageUploader, placeholderAdapter } = sdk;
     const up = new ImageUploader({ http: {} as never, adapter: placeholderAdapter });
-    await expect(up.upload({ path: '/nonexistent/photo.jpg' })).rejects.toMatchObject({ code: 'image_upload_failed', message: expect.stringMatching(/photo\.jpg.*file not found/) });
+    await expect(up.upload({ path: '/nonexistent/photo.jpg' })).rejects.toMatchObject({
+      code: 'image_upload_failed',
+      message: expect.stringMatching(/photo\.jpg.*file not found/),
+    });
   });
 });
 
 describe('configuration with malformed URLs', () => {
   it('reports them as invalid configuration instead of crashing', () => {
-    expect(() => sdk.loadConfig({ WEBHOOK_URL: 'not a url', WEBHOOK_SECRET: 's'.repeat(20) })).toThrow(/Invalid configuration[\s\S]*WEBHOOK_URL/);
+    expect(() => sdk.loadConfig({ WEBHOOK_URL: 'not a url', WEBHOOK_SECRET: 's'.repeat(20) })).toThrow(
+      /Invalid configuration[\s\S]*WEBHOOK_URL/,
+    );
     expect(() => sdk.loadConfig({ OLX_BASE_URL: '::::' })).toThrow(/Invalid configuration[\s\S]*OLX_BASE_URL/);
   });
 });

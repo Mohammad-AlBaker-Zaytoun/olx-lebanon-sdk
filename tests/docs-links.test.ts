@@ -31,11 +31,18 @@ function anchors(markdown: string): Set<string> {
   return out;
 }
 
-const files = [join(ROOT, 'README.md'), join(ROOT, 'CHANGELOG.md'), ...markdownFiles(join(ROOT, 'docs')), ...markdownFiles(join(ROOT, 'examples'))];
+const files = [
+  join(ROOT, 'README.md'),
+  join(ROOT, 'CHANGELOG.md'),
+  ...markdownFiles(join(ROOT, 'docs')),
+  ...markdownFiles(join(ROOT, 'examples')),
+];
 
 describe('documentation links', () => {
   it.each(files.map((f) => [relative(ROOT, f), f]))('%s', (_name, file) => {
-    const text = readFileSync(file, 'utf8').replace(/^```[\s\S]*?^```/gm, '').replace(/`[^`\n]*`/g, '');
+    const text = readFileSync(file, 'utf8')
+      .replace(/^```[\s\S]*?^```/gm, '')
+      .replace(/`[^`\n]*`/g, '');
     const broken: string[] = [];
     for (const [, target] of text.matchAll(/\]\(([^)\s]+)\)/g)) {
       if (/^(https?:|mailto:)/.test(target!)) continue;

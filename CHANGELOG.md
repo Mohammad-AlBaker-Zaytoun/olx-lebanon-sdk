@@ -26,6 +26,11 @@ A library you install in a Node.js or Next.js app and call directly.
 - `require('olx-lebanon-sdk')` works on Node.js 22.12 and later (the entry points now have a `default` condition).
 - A location that is a whole district or the country is refused before sending (`invalid_listing`, with areas to choose from), instead of OLX's 422 "Please select a more specific location".
 
+### Security
+
+- zod 4 (fixes GHSA-mrhx-c7xc-m3w5 in zod 3). Validation messages for wrong types now read like "Invalid input: expected number, received string"; error codes and issue paths are unchanged.
+- REST photo URLs must be http(s); a malformed URL is a 400 `invalid_listing` instead of an internal error.
+
 ### Changed (breaking)
 
 - Entry points: the main import is the library only (it loads `zod` and nothing else). The REST service moved to `olx-lebanon-sdk/server` (`buildServer`, `startServer`, `JobQueue`, webhooks), and the capture tools to `olx-lebanon-sdk/tools`.

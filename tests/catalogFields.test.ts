@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { catalogEntry, categoryLabel, describeFields, listCategories, postableFields, type OlxField } from '../src/tools/catalogFields.js';
+import {
+  catalogEntry,
+  categoryLabel,
+  describeFields,
+  listCategories,
+  postableFields,
+  type OlxField,
+} from '../src/tools/catalogFields.js';
 
 const tree = [
   {
@@ -16,8 +23,20 @@ const tree = [
 
 const fields: OlxField[] = [
   { attribute: 'price', name: 'Price', valueType: 'float', isMandatory: false, roles: ['filterable'], maxValue: 50000 },
-  { attribute: 'price_type', name: 'Price Type', valueType: 'enum', isMandatory: true, choices: [{ value: 'price', label: 'Price' }] },
-  { attribute: 'make', name: 'Brand', valueType: 'enum', isMandatory: true, choices: { a: [{ value: '1', label: 'Apple' }], b: [{ value: '2', label: 'Samsung' }] } },
+  {
+    attribute: 'price_type',
+    name: 'Price Type',
+    valueType: 'enum',
+    isMandatory: true,
+    choices: [{ value: 'price', label: 'Price' }],
+  },
+  {
+    attribute: 'make',
+    name: 'Brand',
+    valueType: 'enum',
+    isMandatory: true,
+    choices: { a: [{ value: '1', label: 'Apple' }], b: [{ value: '2', label: 'Samsung' }] },
+  },
   { attribute: 'new_used', name: 'Condition', valueType: 'enum', isMandatory: false, choices: [{ value: 'new', label: 'New' }] },
   { attribute: 'hot', name: 'Hot', valueType: 'enum', isMandatory: true, roles: ['exclude_from_post_an_ad'] },
 ];
@@ -37,7 +56,13 @@ describe('catalog helpers', () => {
   });
 
   it('lists every choice by default', () => {
-    const many: OlxField = { attribute: 'make', name: 'Brand', valueType: 'enum', isMandatory: true, choices: Array.from({ length: 60 }, (_, i) => ({ value: String(i), label: `B${i}` })) };
+    const many: OlxField = {
+      attribute: 'make',
+      name: 'Brand',
+      valueType: 'enum',
+      isMandatory: true,
+      choices: Array.from({ length: 60 }, (_, i) => ({ value: String(i), label: `B${i}` })),
+    };
     expect(describeFields([many])).toContain('"59" = B59');
     expect(describeFields([many])).not.toContain('more');
   });
@@ -80,7 +105,10 @@ describe('shipped example config', () => {
 describe('locations', () => {
   it('queries every location at the given levels as msearch NDJSON', async () => {
     const { locationsQuery } = await import('../src/tools/catalogFields.js');
-    const lines = locationsQuery([2, 3]).trim().split('\n').map((l) => JSON.parse(l));
+    const lines = locationsQuery([2, 3])
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
     expect(lines).toHaveLength(4);
     expect(lines[0]).toEqual({ index: 'olx-lb-production-locations-en' });
     expect(lines[1].query.bool.must).toEqual([{ term: { level: 2 } }]);
@@ -89,19 +117,28 @@ describe('locations', () => {
 
   it('lists areas below district level with their path, filtered by text', async () => {
     const { formatLocations, parseLocations } = await import('../src/tools/catalogFields.js');
-    const hier = (d: string) => [{ externalID: '0-1', name: 'Lebanon', level: 0 }, { externalID: 'x', name: d, level: 1 }];
+    const hier = (d: string) => [
+      { externalID: '0-1', name: 'Lebanon', level: 0 },
+      { externalID: 'x', name: d, level: 1 },
+    ];
     const raw = {
       responses: [
-        { hits: { hits: [
-          { _source: { id: 191, externalID: '2-299', name: 'Qoubaiyat', level: 2, hierarchy: hier('Akkar') } },
-          { _source: { id: 300, externalID: '2-10', name: 'Achrafieh', level: 2, hierarchy: hier('Beirut') } },
-        ] } },
+        {
+          hits: {
+            hits: [
+              { _source: { id: 191, externalID: '2-299', name: 'Qoubaiyat', level: 2, hierarchy: hier('Akkar') } },
+              { _source: { id: 300, externalID: '2-10', name: 'Achrafieh', level: 2, hierarchy: hier('Beirut') } },
+            ],
+          },
+        },
         { hits: { hits: [] } },
         { error: { type: 'x' } },
       ],
     };
     const locations = parseLocations(raw);
-    expect(formatLocations(locations)).toEqual(['   300  Beirut > Achrafieh', '   191  Akkar > Qoubaiyat'].sort((a, b) => a.slice(8).localeCompare(b.slice(8))));
+    expect(formatLocations(locations)).toEqual(
+      ['   300  Beirut > Achrafieh', '   191  Akkar > Qoubaiyat'].sort((a, b) => a.slice(8).localeCompare(b.slice(8))),
+    );
     expect(formatLocations(locations, 'beirut')).toEqual(['   300  Beirut > Achrafieh']);
   });
 });

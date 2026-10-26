@@ -70,7 +70,10 @@ function describeString(s: string): string {
   if (/^https?:\/\//i.test(s)) {
     try {
       const u = new URL(s);
-      return `<url ${u.host}${u.pathname.split('/').map((seg) => (isSensitiveSegment(seg) ? '{id}' : seg)).join('/')}>`;
+      return `<url ${u.host}${u.pathname
+        .split('/')
+        .map((seg) => (isSensitiveSegment(seg) ? '{id}' : seg))
+        .join('/')}>`;
     } catch {
       return '<url>';
     }
@@ -91,28 +94,33 @@ function describeString(s: string): string {
  * and separators are kept.
  */
 export function idPattern(s: string): string {
-  return s
-    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '\u0000')
-    .split(/([-_./:=+]|\u0000)/)
-    .map((part) => {
-      if (part === '\u0000') return '{uuid}';
-      if (part === '' || /^[-_./:=+]$/.test(part)) return part;
-      if (/^\d+$/.test(part)) return `{d${part.length}}`;
-      if (/^[a-z]{1,12}$/.test(part)) return part;
-      if (/^[0-9a-f]+$/i.test(part)) return `{h${part.length}}`;
-      return `{x${part.length}}`;
-    })
-    .join('');
+  return (
+    s
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '\u0000')
+      // eslint-disable-next-line no-control-regex -- \u0000 marks where a UUID was cut out
+      .split(/([-_./:=+]|\u0000)/)
+      .map((part) => {
+        if (part === '\u0000') return '{uuid}';
+        if (part === '' || /^[-_./:=+]$/.test(part)) return part;
+        if (/^\d+$/.test(part)) return `{d${part.length}}`;
+        if (/^[a-z]{1,12}$/.test(part)) return part;
+        if (/^[0-9a-f]+$/i.test(part)) return `{h${part.length}}`;
+        return `{x${part.length}}`;
+      })
+      .join('')
+  );
 }
 
 /** Masks every value but keeps the structure and key names. */
 function maskDeep(value: unknown, depth: number): unknown {
   if (value === null || value === undefined) return value;
   if (depth > 6) return '<masked>';
-  if (Array.isArray(value)) return value.length ? [maskDeep(value[0], depth + 1), ...(value.length > 1 ? [`…+${value.length - 1} more`] : [])] : [];
+  if (Array.isArray(value))
+    return value.length ? [maskDeep(value[0], depth + 1), ...(value.length > 1 ? [`…+${value.length - 1} more`] : [])] : [];
   if (typeof value === 'object') {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[isSensitiveSegment(k) ? '{id}' : k] = maskDeep(v, depth + 1);
+    for (const [k, v] of Object.entries(value as Record<string, unknown>))
+      out[isSensitiveSegment(k) ? '{id}' : k] = maskDeep(v, depth + 1);
     return out;
   }
   return `<masked ${typeof value}>`;
@@ -172,7 +180,10 @@ export function parseJsonish(text: string | undefined, mime = ''): unknown {
   const t = text.trim();
   if (mime.includes('ndjson') || (/^\{/.test(t) && t.includes('\n{'))) {
     try {
-      return t.split('\n').filter(Boolean).map((line) => JSON.parse(line) as unknown);
+      return t
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as unknown);
     } catch {
       /* fall through */
     }
@@ -257,7 +268,10 @@ function pathPattern(u: URL, withDigits = false): string {
  * Builds the shareable report. Only the first two calls per method+path are shown in full.
  * Returns the report text plus the full public responses keyed by a file-safe name.
  */
-export function buildShapeReport(har: HarFull, opts: ShapeReportOptions): { text: string; publicData: Record<string, unknown[]> } {
+export function buildShapeReport(
+  har: HarFull,
+  opts: ShapeReportOptions,
+): { text: string; publicData: Record<string, unknown[]> } {
   const lines: string[] = [];
   const seen = new Map<string, number>();
   const publicData: Record<string, unknown[]> = {};
@@ -289,8 +303,14 @@ export function buildShapeReport(har: HarFull, opts: ShapeReportOptions): { text
     const respJson = parseJsonish(respText, respMime);
 
     if (isPublic && respJson !== undefined) {
-      const name = pathPattern(url).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
-      (publicData[name] ??= []).push({ query: Object.fromEntries(url.searchParams), request: parseJsonish(request.postData?.text, request.postData?.mimeType), response: respJson });
+      const name = pathPattern(url)
+        .replace(/[^A-Za-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '');
+      (publicData[name] ??= []).push({
+        query: Object.fromEntries(url.searchParams),
+        request: parseJsonish(request.postData?.text, request.postData?.mimeType),
+        response: respJson,
+      });
     }
     if (n > 2) continue;
 
@@ -299,8 +319,7 @@ export function buildShapeReport(har: HarFull, opts: ShapeReportOptions): { text
     const query = [...url.searchParams.entries()];
     if (query.length) {
       lines.push(
-        'query: ' +
-          query.map(([k, v]) => `${k}=${isPublic ? v.slice(0, 120) : String(shapeOf(v, {}, 0, k))}`).join('&'),
+        'query: ' + query.map(([k, v]) => `${k}=${isPublic ? v.slice(0, 120) : String(shapeOf(v, {}, 0, k))}`).join('&'),
       );
     }
     const headerList = reqHeaders
@@ -312,7 +331,14 @@ export function buildShapeReport(har: HarFull, opts: ShapeReportOptions): { text
     if (headerList.length) lines.push('request headers: ' + [...new Set(headerList)].join(' | '));
     const cookieHeader = reqHeaders.find((h) => h.name.toLowerCase() === 'cookie');
     if (cookieHeader) {
-      lines.push('cookie names sent: ' + cookieHeader.value.split(';').map((c) => c.split('=')[0]!.trim()).filter(Boolean).join(', '));
+      lines.push(
+        'cookie names sent: ' +
+          cookieHeader.value
+            .split(';')
+            .map((c) => c.split('=')[0]!.trim())
+            .filter(Boolean)
+            .join(', '),
+      );
     }
 
     const reqMime = request.postData?.mimeType ?? '';
@@ -322,13 +348,21 @@ export function buildShapeReport(har: HarFull, opts: ShapeReportOptions): { text
         lines.push(`request body (${reqMime || 'unknown type'}):`);
         lines.push(JSON.stringify(shapeOf(reqJson, { keepValues: isPublic, maxItems: isPublic ? 3 : 2 }), null, 2));
       } else {
-        lines.push(`request body: ${reqMime || 'unknown type'}, ${request.postData.text?.length ?? 0} chars (not JSON, not shown)`);
+        lines.push(
+          `request body: ${reqMime || 'unknown type'}, ${request.postData.text?.length ?? 0} chars (not JSON, not shown)`,
+        );
       }
     }
 
     const setCookies = (response.headers ?? []).filter((h) => h.name.toLowerCase() === 'set-cookie');
     if (setCookies.length) {
-      lines.push('cookies set: ' + setCookies.flatMap((h) => h.value.split('\n')).map((c) => c.split('=')[0]!.trim()).join(', '));
+      lines.push(
+        'cookies set: ' +
+          setCookies
+            .flatMap((h) => h.value.split('\n'))
+            .map((c) => c.split('=')[0]!.trim())
+            .join(', '),
+      );
     }
     const location = (response.headers ?? []).find((h) => h.name.toLowerCase() === 'location');
     if (location) lines.push('redirect to: ' + String(shapeOf(location.value)));

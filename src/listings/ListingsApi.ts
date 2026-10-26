@@ -117,10 +117,14 @@ export class ListingsApi implements ListingsPort {
       ad = this.d.adapter.parseAd(raw);
     } catch (err) {
       // OLX accepted the request, but we can't tell which ad it made: never treat this as "not created".
-      throw new UncertainWriteError('createAd', `OLX accepted the ad but the response could not be read: ${(err as Error).message}`, {
-        cause: err,
-        body: raw,
-      });
+      throw new UncertainWriteError(
+        'createAd',
+        `OLX accepted the ad but the response could not be read: ${(err as Error).message}`,
+        {
+          cause: err,
+          body: raw,
+        },
+      );
     }
     return ad;
   }
@@ -136,9 +140,7 @@ export class ListingsApi implements ListingsPort {
       // they can't be found, nothing is sent (an edit would otherwise pile photos up).
       const current = await this.findMine(adId, PHOTO_LOOKUP_PAGES);
       if (!current) {
-        throw new OlxSdkError(
-          `Ad ${adId} was not found in "My ads", so its current photos are unknown; the edit was not sent`,
-        );
+        throw new OlxSdkError(`Ad ${adId} was not found in "My ads", so its current photos are unknown; the edit was not sent`);
       }
       ctx.photos = { mode: 'replace', existingPhotoIds: this.d.adapter.readPhotoIds(current.raw) };
     }

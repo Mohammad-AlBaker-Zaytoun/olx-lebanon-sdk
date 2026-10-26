@@ -22,7 +22,13 @@ if (!category || !location) throw new Error('Category or location not found');
 // The category's form: which fields are required and what values they take.
 const fields = await olx.catalog.fields(category.id);
 for (const f of fields.filter((f) => f.required && !f.filledFromPrice)) {
-  console.log(`${f.attribute} (${f.label}):`, f.choices.slice(0, 5).map((c) => `${c.value}=${c.label}`).join(', '));
+  console.log(
+    `${f.attribute} (${f.label}):`,
+    f.choices
+      .slice(0, 5)
+      .map((c) => `${c.value}=${c.label}`)
+      .join(', '),
+  );
 }
 
 const ad: AdInput = {

@@ -1,3 +1,4 @@
+import type * as Playwright from 'playwright';
 import { AuthError, OlxSdkError } from '../errors.js';
 import { silentLogger, type Logger } from '../logger.js';
 import type { SessionData, SessionStore, StoredCookie } from './storage.js';
@@ -64,10 +65,10 @@ export function preferCapturedHeader(name: string, current: string | undefined, 
  * The specifier is hidden from bundlers (Next.js, webpack) so apps that never log in from
  * code don't need it installed.
  */
-export async function loadPlaywright(): Promise<typeof import('playwright')> {
+export async function loadPlaywright(): Promise<typeof Playwright> {
   const name = 'playwright';
   try {
-    return (await import(/* webpackIgnore: true */ /* @vite-ignore */ name)) as typeof import('playwright');
+    return (await import(/* webpackIgnore: true */ /* @vite-ignore */ name)) as typeof Playwright;
   } catch {
     throw new OlxSdkError(
       'Signing in opens a browser, which needs Playwright: run `npm install playwright` and `npx playwright install chromium`.',
@@ -162,10 +163,7 @@ export class SessionManager implements SessionProvider {
     const browser = await chromium.launch({ headless: false });
     try {
       const context = await browser.newContext({ locale: 'en-US' });
-      const domains = [
-        new URL(this.opts.baseUrl).hostname.toLowerCase().replace(/^www\./, ''),
-        ...(this.opts.extraHosts ?? []),
-      ];
+      const domains = [new URL(this.opts.baseUrl).hostname.toLowerCase().replace(/^www\./, ''), ...(this.opts.extraHosts ?? [])];
       const wanted = (this.opts.captureHeaders ?? DEFAULT_CAPTURED_HEADERS).map((h) => h.toLowerCase());
       const captured: Record<string, string> = {};
 

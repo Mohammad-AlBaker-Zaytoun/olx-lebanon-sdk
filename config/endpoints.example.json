@@ -2,10 +2,22 @@
   "_comment": "OLX Lebanon endpoints, mapped from a capture of the web app (October 2026). Copy to config/endpoints.json. If OLX changes them, recapture (docs/ENDPOINT-CAPTURE.md). path is relative to OLX_BASE_URL or an absolute URL; {id} is the ad's 9-digit externalID. The ad API lives on Dubizzle Group's backend, so those entries set sendSessionToForeignHost: the web app sends its bearer token there itself.",
 
   "createAd": { "method": "POST", "path": "https://api-prod.olx-dubizzle.com/api/v1/post-ad", "sendSessionToForeignHost": true },
-  "updateAd": { "method": "PATCH", "path": "https://api-prod.olx-dubizzle.com/api/v1/edit-ad/{id}", "sendSessionToForeignHost": true },
-  "deleteAd": { "method": "POST", "path": "https://api-prod.olx-dubizzle.com/api/v1/ads/{id}/delete", "sendSessionToForeignHost": true },
+  "updateAd": {
+    "method": "PATCH",
+    "path": "https://api-prod.olx-dubizzle.com/api/v1/edit-ad/{id}",
+    "sendSessionToForeignHost": true
+  },
+  "deleteAd": {
+    "method": "POST",
+    "path": "https://api-prod.olx-dubizzle.com/api/v1/ads/{id}/delete",
+    "sendSessionToForeignHost": true
+  },
   "getAd": null,
-  "listMyAds": { "method": "GET", "path": "https://api-prod.olx-dubizzle.com/api/v1/user/my-ads", "sendSessionToForeignHost": true },
+  "listMyAds": {
+    "method": "GET",
+    "path": "https://api-prod.olx-dubizzle.com/api/v1/user/my-ads",
+    "sendSessionToForeignHost": true
+  },
   "currentUser": { "method": "GET", "path": "https://api-prod.olx-dubizzle.com/api/v1/user", "sendSessionToForeignHost": true },
   "signImageUpload": { "method": "GET", "path": "/api/images/get-signed-url/" },
   "uploadImage": null

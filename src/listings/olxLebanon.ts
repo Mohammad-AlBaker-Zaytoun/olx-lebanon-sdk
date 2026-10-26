@@ -83,7 +83,9 @@ function jwtExpiry(token: string): number | undefined {
 export function olxLebanonBearer(session: SessionData, nowSeconds = Date.now() / 1000): string | undefined {
   const header = session.headers.authorization;
   if (header && /^bearer\s+\S/i.test(header)) return header.replace(/^bearer\s+/i, '');
-  const cookie = session.cookies.find((c) => c.name === 'accessToken' && /(^|\.)olx\.com\.lb$/i.test(c.domain.replace(/^\./, '')));
+  const cookie = session.cookies.find(
+    (c) => c.name === 'accessToken' && /(^|\.)olx\.com\.lb$/i.test(c.domain.replace(/^\./, '')),
+  );
   if (!cookie?.value) return undefined;
   const exp = jwtExpiry(cookie.value);
   if (exp !== undefined && exp <= nowSeconds) return undefined;

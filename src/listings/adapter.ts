@@ -35,10 +35,7 @@ export interface SignedUploadFlow {
   /** Whether the upload URL is OLX's own storage (host and path); anything else is refused. */
   isAllowedUploadUrl(url: URL): boolean;
   /** How the ad body refers to the uploaded photo. `uploadUrl` is where it was PUT. */
-  toUploadedImage(
-    name: string,
-    info: { width: number; height: number; contentType: string; uploadUrl: string },
-  ): UploadedImage;
+  toUploadedImage(name: string, info: { width: number; height: number; contentType: string; uploadUrl: string }): UploadedImage;
 }
 
 /**

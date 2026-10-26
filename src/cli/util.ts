@@ -107,5 +107,10 @@ export function parseFlags(
 /** Prints rows as aligned columns. */
 export function table(rows: string[][]): string[] {
   const widths = rows.reduce<number[]>((w, r) => r.map((c, i) => Math.max(w[i] ?? 0, c.length)), []);
-  return rows.map((r) => r.map((c, i) => (i === r.length - 1 ? c : c.padEnd(widths[i]!))).join('  ').trimEnd());
+  return rows.map((r) =>
+    r
+      .map((c, i) => (i === r.length - 1 ? c : c.padEnd(widths[i]!)))
+      .join('  ')
+      .trimEnd(),
+  );
 }

@@ -10,7 +10,10 @@ import { OLX_LB_LOCATIONS_SEARCH, locationsQuery } from '../src/tools/catalogFie
 
 function searchKey(): string {
   if (process.env.OLX_SEARCH_AUTH) return process.env.OLX_SEARCH_AUTH;
-  for (const f of readdirSync('captures').filter((x) => x.endsWith('.har')).sort().reverse()) {
+  for (const f of readdirSync('captures')
+    .filter((x) => x.endsWith('.har'))
+    .sort()
+    .reverse()) {
     const har = JSON.parse(readFileSync(join('captures', f), 'utf8')) as {
       log: { entries: Array<{ request: { url: string; headers: Array<{ name: string; value: string }> } }> };
     };
@@ -23,17 +26,39 @@ function searchKey(): string {
   throw new Error('No search key: set OLX_SEARCH_AUTH or run `olx-lb capture` and browse to the posting form');
 }
 
-type Src = { id: number; externalID: string; name: string; name_l1?: string; level: number; hierarchy?: Array<{ id: number; level: number }> };
+type Src = {
+  id: number;
+  externalID: string;
+  name: string;
+  name_l1?: string;
+  level: number;
+  hierarchy?: Array<{ id: number; level: number }>;
+};
 const res = await fetch(OLX_LB_LOCATIONS_SEARCH, {
   method: 'POST',
-  headers: { 'content-type': 'application/x-ndjson', accept: 'application/json', origin: 'https://www.olx.com.lb', authorization: searchKey() },
+  headers: {
+    'content-type': 'application/x-ndjson',
+    accept: 'application/json',
+    origin: 'https://www.olx.com.lb',
+    authorization: searchKey(),
+  },
   body: locationsQuery([0, 1, 2, 3]),
 });
 if (!res.ok) throw new Error(`Location search returned HTTP ${res.status}`);
 const json = (await res.json()) as { responses: Array<{ hits?: { hits?: Array<{ _source: Src }> } }> };
 const rows = json.responses
   .flatMap((r) => (r.hits?.hits ?? []).map((h) => h._source))
-  .map((s) => [s.id, s.externalID, s.name, s.name_l1 ?? null, s.level, (s.hierarchy ?? []).find((h) => h.level === s.level - 1)?.id ?? null] as const)
+  .map(
+    (s) =>
+      [
+        s.id,
+        s.externalID,
+        s.name,
+        s.name_l1 ?? null,
+        s.level,
+        (s.hierarchy ?? []).find((h) => h.level === s.level - 1)?.id ?? null,
+      ] as const,
+  )
   .sort((a, b) => a[4] - b[4] || a[0] - b[0]);
 if (rows.length < 500) throw new Error(`Only ${rows.length} locations returned; not overwriting the snapshot`);
 const today = new Date().toISOString().slice(0, 10);

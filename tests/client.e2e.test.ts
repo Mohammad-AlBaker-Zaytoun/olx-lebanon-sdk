@@ -130,9 +130,9 @@ describe('OlxClient end to end (mocked OLX)', () => {
 
   it('rejects image hosts outside the allowlist before touching OLX', async () => {
     const { client, transport } = makeClient();
-    await expect(
-      client.sync.upsert('P-2', { ...product, images: [{ url: 'https://evil.test/x.jpg' }] }),
-    ).rejects.toThrow(/not in OLX_IMAGE_HOSTS/);
+    await expect(client.sync.upsert('P-2', { ...product, images: [{ url: 'https://evil.test/x.jpg' }] })).rejects.toThrow(
+      /not in OLX_IMAGE_HOSTS/,
+    );
     expect(transport).not.toHaveBeenCalled();
   });
 

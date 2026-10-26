@@ -22,7 +22,8 @@ async function shapes(ctx: CliContext, harArg?: string): Promise<void> {
   const { text, publicData } = buildShapeReport(har, {
     hosts,
     isPublic: (u) =>
-      /\/api\/v\d+\/(categories|categoryFields)\/?$/i.test(u.pathname) || (/^search-/.test(u.hostname) && /locations/i.test(u.pathname)),
+      /\/api\/v\d+\/(categories|categoryFields)\/?$/i.test(u.pathname) ||
+      (/^search-/.test(u.hostname) && /locations/i.test(u.pathname)),
   });
   const base = harPath.replace(/\.har$/, '');
   await writeFile(`${base}.shapes.txt`, text, { mode: 0o600 });
@@ -58,9 +59,7 @@ async function record(ctx: CliContext): Promise<void> {
           httpOnly: c.httpOnly ?? false,
           secure: c.secure ?? false,
           sameSite: (['Strict', 'Lax', 'None'].find((v) => v.toLowerCase() === (c.sameSite ?? '').toLowerCase()) ?? 'Lax') as
-            | 'Strict'
-            | 'Lax'
-            | 'None',
+            'Strict' | 'Lax' | 'None',
         })),
         origins: Object.entries(saved.localStorage ?? {}).map(([origin, kv]) => ({
           origin,

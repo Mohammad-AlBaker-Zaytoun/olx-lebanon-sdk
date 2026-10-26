@@ -16,7 +16,12 @@ export function catalogEntryFor(categoryId: string, label: string, fields: Categ
     ),
     defaults: {},
     ...(price && (price.min !== undefined || price.max !== undefined)
-      ? { priceLimits: { ...(price.min !== undefined ? { min: price.min } : {}), ...(price.max !== undefined ? { max: price.max } : {}) } }
+      ? {
+          priceLimits: {
+            ...(price.min !== undefined ? { min: price.min } : {}),
+            ...(price.max !== undefined ? { max: price.max } : {}),
+          },
+        }
       : {}),
   };
 }
@@ -42,7 +47,14 @@ Use the ids as categoryId / locationId, and the field names and choice values in
 
     if (what === 'categories') {
       const found = await api.findCategories(rest.join(' ') || undefined);
-      if (json) return void ctx.out(JSON.stringify(found.map(({ id, name, path }) => ({ id, name, path })), null, 2));
+      if (json)
+        return void ctx.out(
+          JSON.stringify(
+            found.map(({ id, name, path }) => ({ id, name, path })),
+            null,
+            2,
+          ),
+        );
       if (!found.length) return void ctx.out('No category matches that text.');
       ctx.out(table([['id', 'category'], ...found.map((c) => [c.id, c.path.join(' > ')])]).join('\n'));
       return;
@@ -82,7 +94,7 @@ Use the ids as categoryId / locationId, and the field names and choice values in
       if (json) return void ctx.out(JSON.stringify(found, null, 2));
       if (!found.length) return void ctx.out('No area matches that text.');
       ctx.out(table([['id', 'location'], ...found.map((l) => [l.id, l.path.join(' > ')])]).join('\n'));
-      ctx.out(`\n(${found.length} ${found.length === 1 ? "area" : "areas"}; snapshot from ${api.locationsTakenAt})`);
+      ctx.out(`\n(${found.length} ${found.length === 1 ? 'area' : 'areas'}; snapshot from ${api.locationsTakenAt})`);
       return;
     }
 

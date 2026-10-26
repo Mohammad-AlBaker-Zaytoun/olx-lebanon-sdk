@@ -116,7 +116,10 @@ export interface HostActivity {
  * Only hostnames and method counts are kept, never paths, headers or bodies, so the result
  * is safe to share. It tells you which host to add to OLX_EXTRA_HOSTS when a call is missing.
  */
-export function tallyHosts(requests: Iterable<{ method: string; url: string }>, isRecorded: (host: string) => boolean): HostActivity[] {
+export function tallyHosts(
+  requests: Iterable<{ method: string; url: string }>,
+  isRecorded: (host: string) => boolean,
+): HostActivity[] {
   const byHost = new Map<string, Record<string, number>>();
   for (const { method, url } of requests) {
     let host: string;
@@ -132,7 +135,8 @@ export function tallyHosts(requests: Iterable<{ method: string; url: string }>, 
     methods[method] = (methods[method] ?? 0) + 1;
     byHost.set(host, methods);
   }
-  const writes = (m: Record<string, number>) => Object.entries(m).reduce((n, [k, v]) => n + (k === 'GET' || k === 'HEAD' || k === 'OPTIONS' ? 0 : v), 0);
+  const writes = (m: Record<string, number>) =>
+    Object.entries(m).reduce((n, [k, v]) => n + (k === 'GET' || k === 'HEAD' || k === 'OPTIONS' ? 0 : v), 0);
   return [...byHost.entries()]
     .map(([host, methods]) => ({ host, methods }))
     .sort((a, b) => writes(b.methods) - writes(a.methods) || a.host.localeCompare(b.host));
@@ -141,6 +145,11 @@ export function tallyHosts(requests: Iterable<{ method: string; url: string }>, 
 export function formatHostActivity(hosts: HostActivity[]): string {
   if (hosts.length === 0) return 'No other hosts were contacted.';
   return hosts
-    .map((h) => `${h.host.padEnd(40)} ${Object.entries(h.methods).map(([m, n]) => `${m} x${n}`).join(', ')}`)
+    .map(
+      (h) =>
+        `${h.host.padEnd(40)} ${Object.entries(h.methods)
+          .map(([m, n]) => `${m} x${n}`)
+          .join(', ')}`,
+    )
     .join('\n');
 }

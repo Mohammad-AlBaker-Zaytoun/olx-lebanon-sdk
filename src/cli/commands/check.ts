@@ -51,7 +51,7 @@ valid category, location and fields (the same JSON your app would send).`,
         line(true, 'account', `${account.name ?? '(no name)'}, phone ${account.phone ? 'set' : 'missing'}`);
         const contact = config.contact.name || account.name;
         if (contact && /^User [A-Za-z0-9]{4,}$/.test(contact)) {
-          ctx.out('      tip: ads will show OLX\'s default name; set OLX_CONTACT_NAME to your business name');
+          ctx.out("      tip: ads will show OLX's default name; set OLX_CONTACT_NAME to your business name");
         }
         const { ads } = await client.ads.list({ perPage: 20 });
         line(true, 'my ads', ads.length ? ads.map((a) => `${a.id} ${a.status}`).join(', ') : 'none');

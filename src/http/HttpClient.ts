@@ -225,8 +225,7 @@ export class OlxHttpClient {
       }
       if ((res.status === 429 || res.status >= 500) && attempt < maxAttempts) {
         const retryAfter = Number(res.headers.get('retry-after'));
-        const wanted =
-          Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : baseDelay * 2 ** (attempt - 1);
+        const wanted = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : baseDelay * 2 ** (attempt - 1);
         const delay = Math.min(wanted, maxDelay);
         this.logger.warn('Retrying OLX read', { endpoint: name, status: res.status, delay });
         await this.sleep(delay);

@@ -1,12 +1,11 @@
 import type { WriteLimits } from './config.js';
 import type { EndpointMap } from './endpoints.js';
 import { OlxClient, type OlxClientOptions } from './client.js';
-import type { Transport } from './http/HttpClient.js';
 import type { OlxAdapter } from './listings/adapter.js';
 import { OLX_LB_ENDPOINTS } from './listings/olxLebanon.js';
 import type { ContactSettings } from './listings/types.js';
 import { silentLogger, type Logger, type RequestLog } from './logger.js';
-import { parseCatalog, type Catalog } from './mapping/CatalogMapper.js';
+import { parseCatalog, type CatalogInput } from './mapping/CatalogMapper.js';
 import { MemorySessionStore, sessionFromAccessToken, type SessionData, type SessionStore } from './session/storage.js';
 import { MemorySyncStore, type SyncStore } from './sync/SyncStore.js';
 
@@ -31,7 +30,7 @@ export interface CreateOlxClientOptions {
    * Optional: your own names for categories and locations (`categoryKey`, `locationKey`),
    * with attribute renames, value maps, defaults and price limits. A parsed object or raw JSON.
    */
-  catalog?: Catalog | unknown;
+  catalog?: CatalogInput;
   /**
    * Where `client.sync` keeps each product's link to its ad. Defaults to memory, which is
    * lost on restart (and per serverless invocation): use a database-backed store in production.
@@ -87,7 +86,7 @@ export function createOlxClient(options: CreateOlxClientOptions = {}): OlxClient
     contact: options.contact,
     logger: options.logger ?? silentLogger,
     requestLog: options.requestLog,
-    transport: options.fetch as Transport | undefined,
+    transport: options.fetch,
     imageFetch: options.imageFetch,
     allowedImageHosts: options.allowedImageHosts,
     http: options.http,

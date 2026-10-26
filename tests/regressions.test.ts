@@ -82,9 +82,7 @@ describe('HTTP client hardening', () => {
   });
 
   it('does not follow redirects: 3xx becomes AuthError and drops the cached session', async () => {
-    const transport = vi.fn<Transport>(
-      async () => new Response(null, { status: 302, headers: { location: '/login?next=/x' } }),
-    );
+    const transport = vi.fn<Transport>(async () => new Response(null, { status: 302, headers: { location: '/login?next=/x' } }));
     const { client, invalidate } = http(transport);
     await expect(client.call('deleteAd', { params: { id: '1' } })).rejects.toBeInstanceOf(AuthError);
     expect(transport.mock.calls[0]![1].redirect).toBe('manual');
@@ -185,18 +183,15 @@ describe('adapter and mapper', () => {
     expect(placeholderAdapter.parseAd({ id: 'AD1', data: { images: [] } }).id).toBe('AD1');
   });
 
-  it.each(['not_approved', 'not_active', 'not_published', 'inactive', 'unpublished'])(
-    'does not read %s as active',
-    (s) => expect(normalizeStatus(s)).toBe('unknown'),
+  it.each(['not_approved', 'not_active', 'not_published', 'inactive', 'unpublished'])('does not read %s as active', (s) =>
+    expect(normalizeStatus(s)).toBe('unknown'),
   );
 
   it('does not resolve Object.prototype names as catalog keys', () => {
     const mapper = new CatalogMapper(catalog);
     const base = { title: 't', description: 'd', price: 1, attributes: { brand: 'x' } };
     expect(() => mapper.resolve({ ...base, categoryKey: 'phones', locationKey: 'toString' })).toThrow(MappingError);
-    expect(() => mapper.resolve({ ...base, categoryKey: 'constructor', locationKey: 'beirut' })).toThrow(
-      MappingError,
-    );
+    expect(() => mapper.resolve({ ...base, categoryKey: 'constructor', locationKey: 'beirut' })).toThrow(MappingError);
   });
 
   it('refuses placeholder ids copied from the example catalog', () => {
@@ -313,9 +308,7 @@ describe('SyncService duplicate protection', () => {
       lastSyncedAt: 't',
     });
     const l = listings();
-    await expect(new SyncService({ listings: l, store }).upsert('P1', product)).rejects.toBeInstanceOf(
-      ReconcileRequiredError,
-    );
+    await expect(new SyncService({ listings: l, store }).upsert('P1', product)).rejects.toBeInstanceOf(ReconcileRequiredError);
     expect(l.create).not.toHaveBeenCalled();
   });
 
@@ -522,9 +515,9 @@ describe('config validation', () => {
 
   it('requires a separate webhook secret and https for remote webhooks', () => {
     expect(() => loadConfig({ WEBHOOK_URL: 'https://hooks.example/x' })).toThrow(/WEBHOOK_SECRET/);
-    expect(() =>
-      loadConfig({ WEBHOOK_URL: 'http://hooks.example/x', WEBHOOK_SECRET: 'webhook-secret-0123456789' }),
-    ).toThrow(/https/);
+    expect(() => loadConfig({ WEBHOOK_URL: 'http://hooks.example/x', WEBHOOK_SECRET: 'webhook-secret-0123456789' })).toThrow(
+      /https/,
+    );
     expect(() =>
       loadConfig({
         WEBHOOK_URL: 'https://hooks.example/x',
@@ -532,8 +525,9 @@ describe('config validation', () => {
         SERVER_API_KEY: 'same-key-0123456789',
       }),
     ).toThrow(/different/);
-    expect(
-      loadConfig({ WEBHOOK_URL: 'http://localhost/hook', WEBHOOK_SECRET: 'webhook-secret-0123456789' }).webhook,
-    ).toEqual({ url: 'http://localhost/hook', secret: 'webhook-secret-0123456789' });
+    expect(loadConfig({ WEBHOOK_URL: 'http://localhost/hook', WEBHOOK_SECRET: 'webhook-secret-0123456789' }).webhook).toEqual({
+      url: 'http://localhost/hook',
+      secret: 'webhook-secret-0123456789',
+    });
   });
 });

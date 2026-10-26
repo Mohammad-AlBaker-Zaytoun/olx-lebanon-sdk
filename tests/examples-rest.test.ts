@@ -47,7 +47,13 @@ beforeAll(async () => {
     await store.set(record);
     return { action: 'created', record, ad: { id: record.adId, status: 'active', raw: { secret: 'never leaves' } } };
   });
-  app = buildServer({ apiKey: KEY, queue, store, resolve: { link: async () => ({}) as never, forget: async () => true }, status: async () => ({}) });
+  app = buildServer({
+    apiKey: KEY,
+    queue,
+    store,
+    resolve: { link: async () => ({}) as never, forget: async () => true },
+    status: async () => ({}),
+  });
   await app.listen({ host: '127.0.0.1', port: 0 });
   url = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
 });

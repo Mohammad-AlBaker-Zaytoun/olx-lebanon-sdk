@@ -122,7 +122,11 @@ export class ImageUploader {
       return flow.toUploadedImage(name, { width: size.width, height: size.height, contentType: size.type, uploadUrl });
     }
     const form = new FormData();
-    form.append(this.o.adapter.imageFieldName ?? 'file', new Blob([img.data as BlobPart], { type: img.contentType }), img.filename);
+    form.append(
+      this.o.adapter.imageFieldName ?? 'file',
+      new Blob([img.data as BlobPart], { type: img.contentType }),
+      img.filename,
+    );
     const raw = await this.o.http.call('uploadImage', { form, rateLimit: false });
     return { id: this.o.adapter.parseImageUpload(raw), contentType: img.contentType };
   }
@@ -141,7 +145,9 @@ export class ImageUploader {
       };
     } else if ('path' in img) {
       const data = await readFile(img.path).catch((err: NodeJS.ErrnoException) => {
-        throw new ImageUploadError(`Image ${n} (${basename(img.path)}): ${err.code === 'ENOENT' ? 'file not found' : `cannot read the file (${err.code ?? err.message})`}`);
+        throw new ImageUploadError(
+          `Image ${n} (${basename(img.path)}): ${err.code === 'ENOENT' ? 'file not found' : `cannot read the file (${err.code ?? err.message})`}`,
+        );
       });
       loaded = {
         data,
@@ -209,8 +215,7 @@ export class ImageUploader {
       return {
         data,
         filename: name,
-        contentType:
-          res.headers.get('content-type')?.split(';')[0]?.trim() || MIME[extname(name).toLowerCase()] || 'image/jpeg',
+        contentType: res.headers.get('content-type')?.split(';')[0]?.trim() || MIME[extname(name).toLowerCase()] || 'image/jpeg',
       };
     }
   }

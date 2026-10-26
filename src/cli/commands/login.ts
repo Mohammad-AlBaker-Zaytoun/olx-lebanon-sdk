@@ -33,7 +33,9 @@ Needs Playwright: npm install playwright && npx playwright install chromium`,
     const token = olxLebanonBearer(saved);
     ctx.out(`\nSession saved to ${file}`);
     ctx.out(`  cookies: ${saved.cookies.length}`);
-    ctx.out(`  access token: ${token ? 'found' : 'NOT found (sign in, then press Enter again with \`olx-lb login\`)'}`);
+    ctx.out(
+      `  access token: ${token ? 'found' : 'NOT found (run `olx-lb login` again, and press Enter only once you are signed in)'}`,
+    );
     if (!token) throw new CliError('No access token was captured; the session may not be signed in.');
     if (config.accessToken) {
       ctx.err('\nNote: OLX_ACCESS_TOKEN is set, and it is used instead of this session. Update it with');

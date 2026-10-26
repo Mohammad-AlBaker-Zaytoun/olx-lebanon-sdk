@@ -9,8 +9,7 @@ const Id = z.union([z.string().trim().min(1), z.number()]).transform(String);
 /** Ids still holding the example-file placeholder; mapping refuses them instead of sending them to OLX. */
 const isPlaceholderId = (id: string): boolean => /^(todo|tbd|xxx+|<.*>)$/i.test(id.trim());
 
-const own = <T>(record: Record<string, T>, key: string): T | undefined =>
-  Object.hasOwn(record, key) ? record[key] : undefined;
+const own = <T>(record: Record<string, T>, key: string): T | undefined => (Object.hasOwn(record, key) ? record[key] : undefined);
 const Attr = z.union([z.string(), z.number(), z.boolean()]);
 
 const CategorySchema = z.object({
@@ -53,6 +52,8 @@ export const CatalogSchema = z.object({
 });
 
 export type Catalog = z.infer<typeof CatalogSchema>;
+/** A catalog as you write it (optional fields may be left out). */
+export type CatalogInput = z.input<typeof CatalogSchema>;
 
 /** A listing translated into OLX's IDs and field names, ready for the adapter to serialise. */
 export interface MappedListing {
@@ -192,9 +193,9 @@ export class CatalogMapper {
     const attributes = category
       ? Object.fromEntries(
           Object.entries(merged).map(([key, value]) => {
-            const values = own(category!.valueMap, key);
+            const values = own(category.valueMap, key);
             const mappedValue = values ? lookupValue(values, value) : value;
-            return [own(category!.attributeMap, key) ?? key, mappedValue];
+            return [own(category.attributeMap, key) ?? key, mappedValue];
           }),
         )
       : merged;

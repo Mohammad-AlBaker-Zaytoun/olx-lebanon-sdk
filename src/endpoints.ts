@@ -55,9 +55,7 @@ export function parseEndpoints(raw: unknown): EndpointMap {
     if (value === null) continue;
     const parsed = SpecSchema.safeParse(value);
     if (!parsed.success) {
-      throw new OlxSdkError(
-        `Invalid spec for endpoint "${key}": ${parsed.error.issues.map((i) => i.message).join('; ')}`,
-      );
+      throw new OlxSdkError(`Invalid spec for endpoint "${key}": ${parsed.error.issues.map((i) => i.message).join('; ')}`);
     }
     out[key as EndpointName] = parsed.data;
   }

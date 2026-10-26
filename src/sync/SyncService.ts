@@ -15,8 +15,7 @@ import type { MappedListing } from '../mapping/CatalogMapper.js';
 import type { SyncRecord, SyncStore } from './SyncStore.js';
 
 export type UpsertResult =
-  | { action: 'created' | 'updated'; record: SyncRecord; ad: OlxAd }
-  | { action: 'unchanged'; record: SyncRecord };
+  { action: 'created' | 'updated'; record: SyncRecord; ad: OlxAd } | { action: 'unchanged'; record: SyncRecord };
 
 export type RemoveResult = { action: 'deleted'; adId: string; alreadyGone?: boolean } | { action: 'not_found' };
 
@@ -59,11 +58,12 @@ export function hashListing(input: ListingInput, mapped?: MappedListing): string
 
 /** Fingerprint of a product's photo list (order matters). */
 export function hashImages(images: ImageSource[] | undefined): string {
-  return createHash('sha256').update(JSON.stringify((images ?? []).map(imageKey))).digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify((images ?? []).map(imageKey)))
+    .digest('hex');
 }
 
-const isGone = (err: unknown): boolean =>
-  err instanceof OlxHttpError && (err.status === 404 || err.status === 410);
+const isGone = (err: unknown): boolean => err instanceof OlxHttpError && (err.status === 404 || err.status === 410);
 
 export interface SyncServiceDeps {
   listings: ListingsPort;
@@ -180,8 +180,7 @@ export class SyncService {
     try {
       ad = await this.d.listings.update(existing.adId, input, {
         // `force` re-sends everything, photos included (e.g. a new picture behind the same URL).
-        photosUnchanged:
-          !opts.force && existing.imagesHash !== undefined && existing.imagesHash === hashImages(input.images),
+        photosUnchanged: !opts.force && existing.imagesHash !== undefined && existing.imagesHash === hashImages(input.images),
       });
     } catch (err) {
       if (isGone(err)) {
@@ -311,7 +310,10 @@ export class SyncService {
       return record;
     }
     if (status === 'limited') {
-      this.logger.warn('OLX ad is limited: it needs a paid package to be visible', { productId: record.productId, adId: record.adId });
+      this.logger.warn('OLX ad is limited: it needs a paid package to be visible', {
+        productId: record.productId,
+        adId: record.adId,
+      });
     }
     return updated;
   }

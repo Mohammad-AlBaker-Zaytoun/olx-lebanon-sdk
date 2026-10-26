@@ -7,14 +7,7 @@
  * and ads are kept in data/olx-links.json here; use a database store in a real app
  * (see ../stores/sql-store.ts).
  */
-import {
-  JsonFileSyncStore,
-  OlxSdkError,
-  createLogger,
-  createOlxClient,
-  toErrorInfo,
-  type AdInput,
-} from 'olx-lebanon-sdk';
+import { JsonFileSyncStore, OlxSdkError, createLogger, createOlxClient, toErrorInfo, type AdInput } from 'olx-lebanon-sdk';
 
 /** Your store's product, however it looks. */
 interface Product {
@@ -77,7 +70,7 @@ for (const product of await loadProducts()) {
       case 'auth_failed':
         // Every other product would fail the same way: stop and renew the token.
         console.error('OLX rejected the token. Run `npx olx-lb login`, then update OLX_ACCESS_TOKEN.');
-        process.exit(1);
+        throw err;
       case 'reconcile_required':
         // Parked: an earlier create may have posted, or the ad was removed on OLX.
         // Check My ads, then olx.sync.link(sku, adId) or olx.sync.forget(sku).

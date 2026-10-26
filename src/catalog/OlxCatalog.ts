@@ -77,7 +77,7 @@ const LOCATIONS: Location[] = (() => {
   const byId = new Map(OLX_LB_LOCATION_ROWS.map((r) => [r[0], r]));
   return OLX_LB_LOCATION_ROWS.map(([id, , name, nameAr, level, parentId]) => {
     const path = [name];
-    for (let p = parentId; p !== null; ) {
+    for (let p = parentId; p !== null;) {
       const parent = byId.get(p);
       if (!parent || parent[4] === 0) break;
       path.unshift(parent[2]);
@@ -164,7 +164,9 @@ export class OlxCatalog {
   locations(text?: string, opts: { includeDistricts?: boolean } = {}): Location[] {
     const needle = text ? norm(text) : '';
     return LOCATIONS.filter(
-      (l) => (opts.includeDistricts || l.postable) && (!needle || norm(l.path.join(' ')).includes(needle) || (l.nameAr?.includes(text!) ?? false)),
+      (l) =>
+        (opts.includeDistricts || l.postable) &&
+        (!needle || norm(l.path.join(' ')).includes(needle) || (l.nameAr?.includes(text!) ?? false)),
     );
   }
 

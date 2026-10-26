@@ -9,14 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OlxClient } from '../src/client.js';
-import { buildUrl, parseEndpoints, type EndpointMap } from '../src/endpoints.js';
-import {
-  AuthError,
-  OlxHttpError,
-  OlxSdkError,
-  ReconcileRequiredError,
-  UncertainWriteError,
-} from '../src/errors.js';
+import { buildUrl, parseEndpoints } from '../src/endpoints.js';
+import { AuthError, OlxHttpError, OlxSdkError, ReconcileRequiredError, UncertainWriteError } from '../src/errors.js';
 import { OlxHttpClient, sessionDomain, type Transport } from '../src/http/HttpClient.js';
 import { WriteRateLimiter } from '../src/http/rateLimiter.js';
 import { placeholderAdapter } from '../src/listings/adapter.js';
@@ -80,17 +74,17 @@ describe('guards: HTTP client', () => {
     const t = vi.fn<Transport>(async () => {
       throw new Error('ECONNRESET');
     });
-    await expect(http(t, { createAd: { method: 'POST', path: '/api/ads' } }).call('createAd', { json: {} })).rejects.toBeInstanceOf(
-      UncertainWriteError,
-    );
+    await expect(
+      http(t, { createAd: { method: 'POST', path: '/api/ads' } }).call('createAd', { json: {} }),
+    ).rejects.toBeInstanceOf(UncertainWriteError);
     expect(t).toHaveBeenCalledTimes(1);
   });
 
   it('[M4] a write is sent exactly once on 429', async () => {
     const t = vi.fn<Transport>(async () => jsonResponse({}, 429));
-    await expect(http(t, { createAd: { method: 'POST', path: '/api/ads' } }).call('createAd', { json: {} })).rejects.toBeInstanceOf(
-      OlxHttpError,
-    );
+    await expect(
+      http(t, { createAd: { method: 'POST', path: '/api/ads' } }).call('createAd', { json: {} }),
+    ).rejects.toBeInstanceOf(OlxHttpError);
     expect(t).toHaveBeenCalledTimes(1);
   });
 
@@ -110,7 +104,10 @@ describe('guards: HTTP client', () => {
   });
 
   it('[M62] beforeSend runs once even when a read is retried', async () => {
-    const t = vi.fn<Transport>().mockResolvedValueOnce(jsonResponse({}, 503)).mockResolvedValueOnce(jsonResponse({ id: '1' }));
+    const t = vi
+      .fn<Transport>()
+      .mockResolvedValueOnce(jsonResponse({}, 503))
+      .mockResolvedValueOnce(jsonResponse({ id: '1' }));
     const beforeSend = vi.fn(async () => {});
     await http(t, { getAd: { method: 'GET', path: '/ads/{id}' } }).call('getAd', { params: { id: '1' }, beforeSend });
     expect(t).toHaveBeenCalledTimes(2);
@@ -133,14 +130,16 @@ describe('guards: HTTP client', () => {
 // ---------------------------------------------------------------- rate limiter
 describe('guards: rate limiter', () => {
   it('[M5][M6] create and update each take exactly one write slot', async () => {
-    const t = vi.fn<Transport>(async (_u, init) => (init.method === 'POST' ? jsonResponse({ id: 'ad-1' }, 201) : new Response(null, { status: 204 })));
+    const t = vi.fn<Transport>(async (_u, init) =>
+      init.method === 'POST' ? jsonResponse({ id: 'ad-1' }, 201) : new Response(null, { status: 204 }),
+    );
     const c = new OlxClient({
-    adapter: placeholderAdapter,
+      adapter: placeholderAdapter,
       baseUrl: 'https://www.olx.com.lb',
       endpoints: parseEndpoints({
         createAd: { method: 'POST', path: '/api/ads' },
         updateAd: { method: 'PUT', path: '/api/ads/{id}' },
-      }) as EndpointMap,
+      }),
       catalog,
       sessionStore: new MemorySessionStore(session),
       syncStore: new MemorySyncStore(),
@@ -178,25 +177,45 @@ describe('guards: image downloads', () => {
   const ok = () => new Response('x', { headers: { 'content-type': 'image/jpeg' } });
 
   it('[M7] blocked if ANY resolved address is private', async () => {
-    const up = new ImageUploader({ http: dummy, adapter: placeholderAdapter, fetchImpl: vi.fn() as never, resolveHost: async () => ['93.184.216.34', '10.0.0.1'] });
+    const up = new ImageUploader({
+      http: dummy,
+      adapter: placeholderAdapter,
+      fetchImpl: vi.fn() as never,
+      resolveHost: async () => ['93.184.216.34', '10.0.0.1'],
+    });
     await expect(up.upload({ url: 'https://cdn.example/a.jpg' })).rejects.toThrow(/private/);
   });
 
   it('[M8] blocked if DNS returns no addresses', async () => {
-    const up = new ImageUploader({ http: dummy, adapter: placeholderAdapter, fetchImpl: vi.fn() as never, resolveHost: async () => [] });
+    const up = new ImageUploader({
+      http: dummy,
+      adapter: placeholderAdapter,
+      fetchImpl: vi.fn() as never,
+      resolveHost: async () => [],
+    });
     await expect(up.upload({ url: 'https://cdn.example/a.jpg' })).rejects.toThrow(/private/);
   });
 
   it('[M42] the allowlist does not match look-alike hosts (evilstore.example)', async () => {
     const fetchImpl = vi.fn(async () => ok());
-    const up = new ImageUploader({ http: dummy, adapter: placeholderAdapter, allowedHosts: ['store.example'], fetchImpl: fetchImpl as never });
+    const up = new ImageUploader({
+      http: dummy,
+      adapter: placeholderAdapter,
+      allowedHosts: ['store.example'],
+      fetchImpl: fetchImpl,
+    });
     await expect(up.upload({ url: 'https://evilstore.example/a.jpg' })).rejects.toThrow(/not in OLX_IMAGE_HOSTS/);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('[M9][M10] image fetches never auto-follow redirects, and hops are capped', async () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 302, headers: { location: '/again.jpg' } }));
-    const up = new ImageUploader({ http: dummy, adapter: placeholderAdapter, allowedHosts: ['store.example'], fetchImpl: fetchImpl as never });
+    const up = new ImageUploader({
+      http: dummy,
+      adapter: placeholderAdapter,
+      allowedHosts: ['store.example'],
+      fetchImpl: fetchImpl,
+    });
     await expect(up.upload({ url: 'https://store.example/a.jpg' })).rejects.toThrow(/redirects/);
     expect(fetchImpl).toHaveBeenCalledTimes(4); // first request + 3 hops
     for (const call of fetchImpl.mock.calls as unknown as Array<[URL, RequestInit]>) expect(call[1].redirect).toBe('manual');
@@ -223,7 +242,9 @@ describe('guards: image downloads', () => {
   it('[M40][M41] size and type are checked for in-memory and file images too', async () => {
     const up = new ImageUploader({ http: dummy, adapter: placeholderAdapter, maxBytes: 10 });
     await expect(up.upload({ data: new Uint8Array(20), filename: 'a.jpg' })).rejects.toThrow(/larger than 10/);
-    await expect(up.upload({ data: new Uint8Array(5), filename: 'a.txt', contentType: 'text/plain' })).rejects.toThrow(/not an image/);
+    await expect(up.upload({ data: new Uint8Array(5), filename: 'a.txt', contentType: 'text/plain' })).rejects.toThrow(
+      /not an image/,
+    );
   });
 });
 
@@ -234,13 +255,15 @@ describe('guards: webhook signature format', () => {
   it('[M11][M12] signs "unixSeconds.body" with HMAC-SHA256', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: 1_700_000_000_123 });
     const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
-    const n = createWebhookNotifier({ url: 'https://hooks.example/x', secret: 'webhook-secret-0123456789' }, silent, fetchImpl as never);
+    const n = createWebhookNotifier({ url: 'https://hooks.example/x', secret: 'webhook-secret-0123456789' }, silent, fetchImpl);
     n.send({ id: 'j', type: 'remove', productId: 'P', status: 'succeeded', createdAt: 't' });
     await n.flush();
     const init = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1];
     const headers = init.headers as Record<string, string>;
     expect(headers['x-olx-sdk-timestamp']).toBe('1700000000');
-    const expected = createHmac('sha256', 'webhook-secret-0123456789').update(`1700000000.${String(init.body)}`).digest('hex');
+    const expected = createHmac('sha256', 'webhook-secret-0123456789')
+      .update(`1700000000.${String(init.body)}`)
+      .digest('hex');
     expect(headers['x-olx-sdk-signature']).toBe(`sha256=${expected}`);
   });
 });
@@ -275,7 +298,9 @@ describe('guards: sync state machine', () => {
     const store = new MemorySyncStore();
     await store.set(rec({ syncState: 'gone' }));
     const create = vi.fn();
-    const err = await new SyncService({ listings: fakeListings({ create }), store }).upsert('P', product).catch((e: unknown) => e);
+    const err = await new SyncService({ listings: fakeListings({ create }), store })
+      .upsert('P', product)
+      .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ReconcileRequiredError);
     expect((err as ReconcileRequiredError).reason).toBe('ad_gone');
     expect(create).not.toHaveBeenCalled();
@@ -451,9 +476,18 @@ describe('guards: REST server', () => {
   it('[M20][M21] product ids are validated on PUT and resolve', async () => {
     const { app: a } = app();
     const body = { title: 't', description: 'd', price: 1, categoryKey: 'c', locationKey: 'l' };
-    expect((await a.inject({ method: 'PUT', url: '/v1/products/a%20b/listing', headers: auth, payload: body })).statusCode).toBe(400);
+    expect((await a.inject({ method: 'PUT', url: '/v1/products/a%20b/listing', headers: auth, payload: body })).statusCode).toBe(
+      400,
+    );
     expect(
-      (await a.inject({ method: 'POST', url: '/v1/products/a%20b/listing/resolve', headers: auth, payload: { action: 'forget' } })).statusCode,
+      (
+        await a.inject({
+          method: 'POST',
+          url: '/v1/products/a%20b/listing/resolve',
+          headers: auth,
+          payload: { action: 'forget' },
+        })
+      ).statusCode,
     ).toBe(400);
   });
 

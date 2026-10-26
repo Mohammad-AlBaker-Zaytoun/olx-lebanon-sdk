@@ -49,7 +49,9 @@ Its link is kept in data/test-post-store.json, apart from your app's store.`,
     const product = JSON.parse(readFileSync(file, 'utf8')) as ListingInput;
     // Photo paths are relative to the product file.
     const base = file.replace(/[\\/][^\\/]*$/, '');
-    product.images = product.images?.map((img) => ('path' in img && !/^([a-z]:)?[\\/]/i.test(img.path) ? { path: `${base}/${img.path}` } : img));
+    product.images = product.images?.map((img) =>
+      'path' in img && !/^([a-z]:)?[\\/]/i.test(img.path) ? { path: `${base}/${img.path}` } : img,
+    );
 
     const config = loadConfig();
     const client = OlxClient.fromConfig(
@@ -83,7 +85,9 @@ Its link is kept in data/test-post-store.json, apart from your app's store.`,
       ctx.out('\nThe photo count should stay the same. Next: olx-lb test-post delete');
     } else {
       const r = await client.sync.remove(PRODUCT_ID);
-      ctx.out(r.action === 'deleted' ? `deleted ad ${r.adId}${r.alreadyGone ? ' (it was already gone)' : ''}` : 'nothing to delete');
+      ctx.out(
+        r.action === 'deleted' ? `deleted ad ${r.adId}${r.alreadyGone ? ' (it was already gone)' : ''}` : 'nothing to delete',
+      );
     }
   },
 };

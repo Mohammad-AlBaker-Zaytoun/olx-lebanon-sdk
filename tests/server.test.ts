@@ -56,9 +56,7 @@ describe('REST server', () => {
     setup();
     expect((await app.inject({ method: 'GET', url: '/v1/health' })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/v1/status' })).statusCode).toBe(401);
-    expect((await app.inject({ method: 'GET', url: '/v1/status', headers: { 'x-api-key': 'wrong' } })).statusCode).toBe(
-      401,
-    );
+    expect((await app.inject({ method: 'GET', url: '/v1/status', headers: { 'x-api-key': 'wrong' } })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/v1/listings', headers: auth })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: '/v1/health' })).statusCode).toBe(401);
   });

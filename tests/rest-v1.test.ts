@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { validate } from '@readme/openapi-parser';
 import { describe, expect, it, vi } from 'vitest';
-import { ImageUploadError, MappingError, OlxHttpError, ReconcileRequiredError, UncertainWriteError, toErrorInfo } from '../src/errors.js';
+import {
+  ImageUploadError,
+  MappingError,
+  OlxHttpError,
+  ReconcileRequiredError,
+  UncertainWriteError,
+  toErrorInfo,
+} from '../src/errors.js';
 import { buildServer } from '../src/server/app.js';
 import { openApiDocument } from '../src/server/openapi.js';
 import { JobQueue } from '../src/server/queue.js';
@@ -53,14 +60,26 @@ describe('REST /v1: one error shape', () => {
 
   it('validation errors list their issues with a path', async () => {
     const { app } = server();
-    const res = await app.inject({ method: 'PUT', url: '/v1/products/P1/listing', headers: auth, payload: { ...listing, locationId: 'beirut' } });
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/v1/products/P1/listing',
+      headers: auth,
+      payload: { ...listing, locationId: 'beirut' },
+    });
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({ error: { code: 'invalid_listing', details: { issues: [expect.objectContaining({ path: 'locationId' })] } } });
+    expect(res.json()).toMatchObject({
+      error: { code: 'invalid_listing', details: { issues: [expect.objectContaining({ path: 'locationId' })] } },
+    });
   });
 
   it('bad JSON is bad_request; an oversized body is payload_too_large', async () => {
     const { app } = server();
-    const bad = await app.inject({ method: 'PUT', url: '/v1/products/P1/listing', headers: { ...auth, 'content-type': 'application/json' }, payload: '{nope' });
+    const bad = await app.inject({
+      method: 'PUT',
+      url: '/v1/products/P1/listing',
+      headers: { ...auth, 'content-type': 'application/json' },
+      payload: '{nope',
+    });
     expect(bad.statusCode).toBe(400);
     expect(bad.json()).toMatchObject({ error: { code: 'bad_request' } });
     const big = await app.inject({
@@ -107,15 +126,27 @@ describe('toErrorInfo', () => {
       message: 'bad',
       details: { issues: ['Title is empty'] },
     });
-    expect(toErrorInfo(new UncertainWriteError('createAd', 'timeout', { status: 502 }))).toMatchObject({ code: 'outcome_unknown', status: 502 });
+    expect(toErrorInfo(new UncertainWriteError('createAd', 'timeout', { status: 502 }))).toMatchObject({
+      code: 'outcome_unknown',
+      status: 502,
+    });
     expect(toErrorInfo(new ImageUploadError('no'))).toMatchObject({ code: 'image_upload_failed' });
-    expect(toErrorInfo(new ReconcileRequiredError('P', 'ad_gone'))).toMatchObject({ code: 'reconcile_required', details: { reason: 'ad_gone' } });
+    expect(toErrorInfo(new ReconcileRequiredError('P', 'ad_gone'))).toMatchObject({
+      code: 'reconcile_required',
+      details: { reason: 'ad_gone' },
+    });
     expect(toErrorInfo(new Error('boom'))).toEqual({ code: 'internal_error', message: 'boom' });
   });
 
   it('every SDK error code is listed in the OpenAPI ErrorCode enum', () => {
     const enumCodes = openApiDocument.components.schemas.ErrorCode.enum as readonly string[];
-    for (const e of [new MappingError('x'), new OlxHttpError('x', 400, {}), new UncertainWriteError('x', 'x'), new ImageUploadError('x'), new ReconcileRequiredError('p', 'ad_gone')]) {
+    for (const e of [
+      new MappingError('x'),
+      new OlxHttpError('x', 400, {}),
+      new UncertainWriteError('x', 'x'),
+      new ImageUploadError('x'),
+      new ReconcileRequiredError('p', 'ad_gone'),
+    ]) {
       expect(enumCodes).toContain(e.code);
     }
   });
@@ -139,7 +170,12 @@ describe('OpenAPI document', () => {
     for (const [path, item] of Object.entries(openApiDocument.paths)) {
       for (const method of Object.keys(item).filter((k) => ['get', 'put', 'post', 'delete'].includes(k))) {
         const url = path.replace('{productId}', 'P1').replace('{jobId}', 'missing');
-        const res = await app.inject({ method: method.toUpperCase() as 'GET', url, headers: auth, payload: method === 'get' || method === 'delete' ? undefined : {} });
+        const res = await app.inject({
+          method: method.toUpperCase() as 'GET',
+          url,
+          headers: auth,
+          payload: method === 'get' || method === 'delete' ? undefined : {},
+        });
         const body = res.json<{ error?: { message?: string } }>();
         // A missing route answers "No route …"; real routes answer anything else.
         expect(body.error?.message ?? '', `${method.toUpperCase()} ${path}`).not.toMatch(/^No route/);
@@ -164,7 +200,9 @@ describe('OpenAPI document', () => {
     }
     const documented = new Set(
       Object.entries(openApiDocument.paths).flatMap(([path, item]) =>
-        Object.keys(item).filter((k) => ['get', 'put', 'post', 'delete', 'patch'].includes(k)).map((k) => `${k.toUpperCase()} ${path}`),
+        Object.keys(item)
+          .filter((k) => ['get', 'put', 'post', 'delete', 'patch'].includes(k))
+          .map((k) => `${k.toUpperCase()} ${path}`),
       ),
     );
     expect([...actual].sort()).toEqual([...documented].sort());
@@ -192,7 +230,10 @@ describe('internal errors', () => {
     expect(res.statusCode).toBe(500);
     expect(res.json()).toMatchObject({ error: { code: 'internal_error', message: 'Internal error', requestId: 'req-7' } });
     expect(res.body).not.toContain('database is down');
-    expect(error).toHaveBeenCalledWith('Request failed', expect.objectContaining({ requestId: 'req-7', error: 'database is down' }));
+    expect(error).toHaveBeenCalledWith(
+      'Request failed',
+      expect.objectContaining({ requestId: 'req-7', error: 'database is down' }),
+    );
   });
 });
 
@@ -219,7 +260,12 @@ describe('malformed listing bodies', () => {
 
   it.each(bad.map((b) => [JSON.stringify(b).slice(0, 60), b]))('%s → 400 invalid_listing, never 500', async (_label, body) => {
     const { app } = server();
-    const res = await app.inject({ method: 'PUT', url: '/v1/products/P1/listing', headers: { ...auth, 'content-type': 'application/json' }, payload: JSON.stringify(body) });
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/v1/products/P1/listing',
+      headers: { ...auth, 'content-type': 'application/json' },
+      payload: JSON.stringify(body),
+    });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: { code: expect.stringMatching(/^(invalid_listing|bad_request)$/) } });
   });

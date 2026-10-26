@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseEndpoints } from '../src/endpoints.js';
-import {
-  AuthError,
-  EndpointNotConfiguredError,
-  OlxHttpError,
-  OlxSdkError,
-  UncertainWriteError,
-} from '../src/errors.js';
+import { AuthError, EndpointNotConfiguredError, OlxHttpError, OlxSdkError, UncertainWriteError } from '../src/errors.js';
 import { OlxHttpClient, type Transport } from '../src/http/HttpClient.js';
 import { WriteRateLimiter } from '../src/http/rateLimiter.js';
 import { MemoryRequestLog } from '../src/logger.js';

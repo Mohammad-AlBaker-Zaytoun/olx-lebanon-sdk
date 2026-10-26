@@ -2,10 +2,7 @@ import { z } from 'zod';
 
 export type AttributeValue = string | number | boolean;
 
-export type ImageSource =
-  | { url: string }
-  | { path: string }
-  | { data: Uint8Array; filename: string; contentType?: string };
+export type ImageSource = { url: string } | { path: string } | { data: Uint8Array; filename: string; contentType?: string };
 
 /**
  * An ad's content. Give the category and the location either as OLX ids (`categoryId`,
@@ -89,7 +86,9 @@ const Price = z.preprocess(
 );
 
 /** An OLX id sent as a number or a string ("175"). */
-const OlxId = z.union([z.string().trim().regex(/^\d+$/, 'must be a numeric OLX id'), z.number().int().positive()]).transform(String);
+const OlxId = z
+  .union([z.string().trim().regex(/^\d+$/, 'must be a numeric OLX id'), z.number().int().positive()])
+  .transform(String);
 
 /** PHP's json_encode turns an empty associative array into `[]`; treat it as `{}`. */
 const Attributes = z.preprocess(
@@ -97,37 +96,39 @@ const Attributes = z.preprocess(
   z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
 );
 
-export const RestListingSchema = z.object({
-  title: z.string().trim().min(1),
-  description: z.string().trim().min(1),
-  price: Price,
-  currency: z.enum(['USD', 'LBP']).default('USD'),
-  categoryKey: z.string().min(1).optional(),
-  categoryId: OlxId.optional(),
-  locationKey: z.string().min(1).optional(),
-  locationId: OlxId.optional(),
-  attributes: Attributes.default({}),
-  images: z
-    .array(
-      z.object({
-        url: z.string().superRefine((u, ctx) => {
-          let url: URL;
-          try {
-            url = new URL(u);
-          } catch {
-            ctx.addIssue({ code: 'custom', message: 'must be a valid URL' });
-            return;
-          }
-          if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-            ctx.addIssue({ code: 'custom', message: 'image URLs must use https (or http for a host in OLX_IMAGE_HOSTS)' });
-          }
-          if (url.username || url.password) ctx.addIssue({ code: 'custom', message: 'image URLs must not contain credentials' });
+export const RestListingSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    description: z.string().trim().min(1),
+    price: Price,
+    currency: z.enum(['USD', 'LBP']).default('USD'),
+    categoryKey: z.string().min(1).optional(),
+    categoryId: OlxId.optional(),
+    locationKey: z.string().min(1).optional(),
+    locationId: OlxId.optional(),
+    attributes: Attributes.default({}),
+    images: z
+      .array(
+        z.object({
+          url: z.string().superRefine((u, ctx) => {
+            let url: URL;
+            try {
+              url = new URL(u);
+            } catch {
+              ctx.addIssue({ code: 'custom', message: 'must be a valid URL' });
+              return;
+            }
+            if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+              ctx.addIssue({ code: 'custom', message: 'image URLs must use https (or http for a host in OLX_IMAGE_HOSTS)' });
+            }
+            if (url.username || url.password)
+              ctx.addIssue({ code: 'custom', message: 'image URLs must not contain credentials' });
+          }),
         }),
-      }),
-    )
-    .max(20)
-    .default([]),
-})
+      )
+      .max(20)
+      .default([]),
+  })
   .refine((l) => (l.categoryKey === undefined) !== (l.categoryId === undefined), {
     message: 'give either categoryKey or categoryId',
     path: ['categoryId'],

@@ -106,7 +106,10 @@ Options:
     const missing = IGNORE.filter((l) => !variants(l).some((v) => have.has(v)));
     if (missing.length) {
       const sep = current && !current.endsWith('\n') ? '\n' : '';
-      writeFileSync(gi, `${current}${sep}${current ? '\n' : ''}# olx-lebanon-sdk (secrets and local state)\n${missing.join('\n')}\n`);
+      writeFileSync(
+        gi,
+        `${current}${sep}${current ? '\n' : ''}# olx-lebanon-sdk (secrets and local state)\n${missing.join('\n')}\n`,
+      );
       results.push(['.gitignore', current ? `added ${missing.join(' ')}` : 'created']);
     } else {
       results.push(['.gitignore', 'kept (already ignores the secret files)']);

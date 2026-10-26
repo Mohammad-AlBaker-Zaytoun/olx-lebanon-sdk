@@ -120,10 +120,7 @@ export class OlxClient {
    * Builds a client from `loadConfig()` output, using file-based stores. Logs to stderr at
    * LOG_LEVEL unless you pass your own `logger` (pass `silentLogger` to mute it).
    */
-  static fromConfig(
-    config: OlxConfig,
-    overrides: Partial<Omit<OlxClientOptions, 'baseUrl' | 'writeLimits'>> = {},
-  ): OlxClient {
+  static fromConfig(config: OlxConfig, overrides: Partial<Omit<OlxClientOptions, 'baseUrl' | 'writeLimits'>> = {}): OlxClient {
     const logger = overrides.logger ?? createLogger(config.logLevel);
     // Both files are optional: the endpoints are built in, and ads can use OLX ids directly.
     if (!overrides.catalog && !existsSync(config.catalogFile)) {

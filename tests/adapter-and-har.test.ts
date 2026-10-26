@@ -11,10 +11,7 @@ describe('placeholderAdapter', () => {
   });
 
   it('parses lists and image uploads', () => {
-    expect(placeholderAdapter.parseAdList({ results: [{ id: 'a' }, { id: 'b' }] }).map((a) => a.id)).toEqual([
-      'a',
-      'b',
-    ]);
+    expect(placeholderAdapter.parseAdList({ results: [{ id: 'a' }, { id: 'b' }] }).map((a) => a.id)).toEqual(['a', 'b']);
     expect(placeholderAdapter.parseImageUpload({ image_id: 'img-1' })).toBe('img-1');
   });
 

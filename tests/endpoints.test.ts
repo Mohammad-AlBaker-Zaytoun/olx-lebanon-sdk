@@ -20,11 +20,16 @@ describe('endpoints', () => {
   });
 
   it('builds URLs with encoded params and query', () => {
-    const url = buildUrl('https://www.olx.com.lb', { method: 'GET', path: '/api/ads/{id}' }, { id: 'ad-1' }, {
-      page: 2,
-      q: 'a b&c',
-      skip: undefined,
-    });
+    const url = buildUrl(
+      'https://www.olx.com.lb',
+      { method: 'GET', path: '/api/ads/{id}' },
+      { id: 'ad-1' },
+      {
+        page: 2,
+        q: 'a b&c',
+        skip: undefined,
+      },
+    );
     expect(url).toBe('https://www.olx.com.lb/api/ads/ad-1?page=2&q=a+b%26c');
   });
 

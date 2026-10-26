@@ -32,7 +32,7 @@ const ORDER = ['init', 'login', 'token', 'catalog', 'check', 'test-post', 'serve
 
 async function help(ctx: CliContext, name?: string): Promise<void> {
   if (name && COMMANDS[name]) {
-    const cmd = await COMMANDS[name]!();
+    const cmd = await COMMANDS[name]();
     ctx.out(`${cmd.summary}\n\n${cmd.usage}`);
     return;
   }
@@ -92,7 +92,7 @@ export async function main(argv: string[], ctx: CliContext = defaultContext()): 
     ctx.err(`Settings file not found: ${envPath}`);
     return 1;
   }
-  if (existsSync(envPath)) dotenv.config({ path: envPath, quiet: true } as dotenv.DotenvConfigOptions);
+  if (existsSync(envPath)) dotenv.config({ path: envPath, quiet: true });
 
   try {
     const code = await cmd.run(rest, ctx);

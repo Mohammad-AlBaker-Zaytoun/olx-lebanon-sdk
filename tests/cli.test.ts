@@ -50,7 +50,9 @@ describe('olx-lb', () => {
   it('looks up areas from the shipped data, also as JSON', async () => {
     const t = ctx();
     expect(await main(['catalog', 'locations', 'verdun', '--json'], t.c)).toBe(0);
-    expect(JSON.parse(t.out.join('\n'))).toEqual([expect.objectContaining({ name: 'Verdun', path: ['Beirut', 'Verdun'], postable: true })]);
+    expect(JSON.parse(t.out.join('\n'))).toEqual([
+      expect.objectContaining({ name: 'Verdun', path: ['Beirut', 'Verdun'], postable: true }),
+    ]);
   });
 
   describe('init', () => {
@@ -60,8 +62,13 @@ describe('olx-lb', () => {
       const env = readFileSync(join(t.cwd, '.env'), 'utf8');
       expect(env).toMatch(/^SERVER_API_KEY=[0-9a-f]{64}$/m);
       expect(env).toMatch(/^OLX_CONTACT_NAME=My Shop$/m);
-      expect(JSON.parse(readFileSync(join(t.cwd, 'config/catalog.json'), 'utf8'))).toMatchObject({ categories: {}, locations: {} });
-      expect(readFileSync(join(t.cwd, '.gitignore'), 'utf8')).toMatch(/\.env\n\/\.olx-session\/\n\/captures\/\n\/data\/\n\/logs\//);
+      expect(JSON.parse(readFileSync(join(t.cwd, 'config/catalog.json'), 'utf8'))).toMatchObject({
+        categories: {},
+        locations: {},
+      });
+      expect(readFileSync(join(t.cwd, '.gitignore'), 'utf8')).toMatch(
+        /\.env\n\/\.olx-session\/\n\/captures\/\n\/data\/\n\/logs\//,
+      );
     });
 
     it('never overwrites without --force, and never duplicates .gitignore lines', async () => {
@@ -85,7 +92,10 @@ describe('olx-lb', () => {
   it('test-post creates a template product on first run and posts nothing', async () => {
     const t = ctx();
     expect(await main(['test-post', 'create'], t.c)).toBe(0);
-    expect(JSON.parse(readFileSync(join(t.cwd, 'olx-test-product.json'), 'utf8'))).toMatchObject({ categoryId: '174', locationId: '47' });
+    expect(JSON.parse(readFileSync(join(t.cwd, 'olx-test-product.json'), 'utf8'))).toMatchObject({
+      categoryId: '174',
+      locationId: '47',
+    });
     expect(existsSync(join(t.cwd, 'data'))).toBe(false);
   });
 
@@ -100,7 +110,9 @@ describe('olx-lb', () => {
 
 describe('parseFlags', () => {
   it('reads --name value, --name=value, booleans and positionals', () => {
-    expect(parseFlags(['a', '--product', 'p.json', '--json', '--x=1', 'b'], { product: 'string', json: 'boolean', x: 'string' })).toEqual({
+    expect(
+      parseFlags(['a', '--product', 'p.json', '--json', '--x=1', 'b'], { product: 'string', json: 'boolean', x: 'string' }),
+    ).toEqual({
       flags: { product: 'p.json', json: true, x: '1' },
       positionals: ['a', 'b'],
     });

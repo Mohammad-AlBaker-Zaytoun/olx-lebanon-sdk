@@ -28,10 +28,7 @@ const EnvSchema = z.object({
   OLX_BASE_URL: z
     .string()
     .url()
-    .refine(
-      secureOrLocalUrl,
-      'OLX_BASE_URL must use https (plain http is only allowed for localhost, for testing)',
-    )
+    .refine(secureOrLocalUrl, 'OLX_BASE_URL must use https (plain http is only allowed for localhost, for testing)')
     .default('https://www.olx.com.lb'),
   OLX_ACCESS_TOKEN: z
     .string()
