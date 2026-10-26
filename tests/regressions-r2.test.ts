@@ -187,9 +187,9 @@ describe('round 2: security', () => {
       action: 'created',
       ad: { id: 'ad-1', raw: { seller: { access_token: 'SECRET-TOKEN-FROM-OLX', phone: '70123456' } } },
     }));
-    const put = await app.inject({ method: 'PUT', url: '/products/P1/listing', headers: auth, payload: restBody });
+    const put = await app.inject({ method: 'PUT', url: '/v1/products/P1/listing', headers: auth, payload: restBody });
     await queue.idle();
-    const job = await app.inject({ method: 'GET', url: `/jobs/${put.json<{ jobId: string }>().jobId}`, headers: auth });
+    const job = await app.inject({ method: 'GET', url: `/v1/jobs/${put.json<{ jobId: string }>().jobId}`, headers: auth });
     expect(job.json()).toMatchObject({ status: 'succeeded', result: { ad: { id: 'ad-1' } } });
     expect(job.body).not.toContain('SECRET-TOKEN-FROM-OLX');
     expect(job.body).not.toContain('70123456');
@@ -200,7 +200,7 @@ describe('round 2: security', () => {
     const { app } = await server(async () => undefined);
     const res = await app.inject({
       method: 'PUT',
-      url: '/products/P1/listing',
+      url: '/v1/products/P1/listing',
       headers: auth,
       payload: { ...restBody, images: [{ url: 'https://user:pa55@cdn.example/a.png' }] },
     });
@@ -238,7 +238,7 @@ describe('round 2: security', () => {
   it('caps the queue (REST answers 429)', async () => {
     let release!: () => void;
     const { app } = await server(() => new Promise<void>((r) => (release = r)), 2);
-    const put = (id: string) => app.inject({ method: 'PUT', url: `/products/${id}/listing`, headers: auth, payload: restBody });
+    const put = (id: string) => app.inject({ method: 'PUT', url: `/v1/products/${id}/listing`, headers: auth, payload: restBody });
     await put('running'); // taken by the worker
     expect((await put('A')).statusCode).toBe(202);
     expect((await put('B')).statusCode).toBe(202);
@@ -337,11 +337,11 @@ describe('round 2: docs-driven fixes', () => {
     queue.stop();
     const res = await app.inject({
       method: 'DELETE',
-      url: '/products/P1/listing',
+      url: '/v1/products/P1/listing',
       headers: { 'x-api-key': 'test-key-0123456789abcdef' },
     });
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toMatchObject({ error: 'shutting_down' });
+    expect(res.json()).toMatchObject({ error: { code: 'shutting_down' } });
     await app.close();
   });
 

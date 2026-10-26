@@ -58,7 +58,7 @@ describe('JobQueue', () => {
     const bad = queue.enqueue('remove', 'bad');
     const good = queue.enqueue('remove', 'good');
     await queue.idle();
-    expect(queue.get(bad.id)).toMatchObject({ status: 'failed', error: { message: 'boom' } });
+    expect(queue.get(bad.id)).toMatchObject({ status: 'failed', error: { code: 'internal_error', message: 'boom' } });
     expect(queue.get(good.id)).toMatchObject({ status: 'succeeded', result: 'ok' });
     expect(settled.map((j) => j.productId)).toEqual(['bad', 'good']);
   });

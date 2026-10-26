@@ -12,6 +12,8 @@ A library you install in a Node.js or Next.js app and call directly.
 - Ads and products can use OLX ids directly (`categoryId`, `locationId`, OLX attribute names); the catalog file is optional. Keys and ids can be mixed, and the REST body accepts both.
 - The `olx-lb` CLI ships in the package: `init`, `login`, `token`, `check`, `catalog`, `test-post`, `serve`, `capture`. It replaces the repo-only `npm run` scripts, which remain as aliases.
 - `startServer()` in `olx-lebanon-sdk/server`.
+- Stable error codes: every `OlxSdkError` has a `code` (`invalid_listing`, `auth_failed`, `olx_rejected`, `outcome_unknown`, `image_upload_failed`, `reconcile_required`, `link_conflict`, `healthy_link`). `toErrorInfo(err)` turns any error into `{ code, message, status?, details? }`. OLX's own field errors are in `details.olxErrors`.
+- REST: an OpenAPI 3.1 document (`openapi.json`, served at `GET /v1/openapi.json`), validated and checked against the routes in tests. `X-Request-Id` on every response, echoing a safe one from the caller.
 - Verified in a Next.js 15 (webpack) and 16 (Turbopack) app with no configuration.
 
 ### Changed (breaking)
@@ -20,6 +22,7 @@ A library you install in a Node.js or Next.js app and call directly.
 - `playwright` is now an optional peer dependency, needed only for `olx-lb login` and `olx-lb capture`.
 - `ListingInput.categoryKey` and `locationKey` are optional; give either the key or the OLX id.
 - `config/endpoints.json` is optional: without it, the built-in endpoints are used.
+- REST: the API moved under `/v1` (e.g. `PUT /v1/products/:id/listing`), and unversioned paths now answer `404 not_found`. Every error is `{ "error": { "code", "message", "details"?, "requestId" } }`, instead of `{ "error": "<code>", … }`. Failed jobs' `error` is `{ code, message, status?, details? }`, instead of `{ name, message }`.
 
 
 ## 0.2.0 — 2026-10-26

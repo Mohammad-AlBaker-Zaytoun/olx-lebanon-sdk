@@ -212,18 +212,42 @@ Run it from the folder that holds `.env`. Under Task Scheduler, NSSM or a Window
 
 ### Endpoints
 
-Every route except `/health` requires the `X-Api-Key` header. The service binds to `127.0.0.1` by default, so keep it on the same machine or private network as your store.
+The API is versioned under `/v1`. Every route except `/v1/health` and `/v1/openapi.json` requires the `X-Api-Key` header. The service binds to `127.0.0.1` by default, so keep it on the same machine or private network as your store.
+
+**OpenAPI.** The full contract is in [`openapi.json`](openapi.json) (OpenAPI 3.1), which also ships in the package. The service serves it at `GET /v1/openapi.json`. Generate a typed client for your language with openapi-generator, NSwag, oapi-codegen or similar, or import it into Postman.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/health` | Liveness check (no key needed) |
-| `GET` | `/status` | Session state, mapped endpoints, queue, writes in the last hour, products needing attention |
-| `PUT` | `/products/:productId/listing` | Create or update the ad for a product → `202 { jobId }`. Add `?force=true` to push unchanged content. |
-| `DELETE` | `/products/:productId/listing` | Remove the product's ad → `202 { jobId }` |
-| `POST` | `/products/:productId/listing/resolve` | Resolve a parked product (see below) |
-| `GET` | `/products/:productId/listing` | The stored product ↔ ad link |
-| `GET` | `/listings` | All stored links |
-| `GET` | `/jobs/:jobId` | Job outcome (`queued`, `running`, `succeeded`, `failed`, `cancelled`), without raw OLX data |
+| `GET` | `/v1/health` | Liveness check (no key needed) |
+| `GET` | `/v1/openapi.json` | The OpenAPI document (no key needed) |
+| `GET` | `/v1/status` | Session state, queue, writes in the last hour, products needing attention |
+| `PUT` | `/v1/products/:productId/listing` | Create or update the ad for a product → `202 { jobId }`. Add `?force=true` to push unchanged content. |
+| `DELETE` | `/v1/products/:productId/listing` | Remove the product's ad → `202 { jobId }` |
+| `POST` | `/v1/products/:productId/listing/resolve` | Resolve a parked product (see below) |
+| `GET` | `/v1/products/:productId/listing` | The stored product ↔ ad link |
+| `GET` | `/v1/listings` | All stored links |
+| `GET` | `/v1/jobs/:jobId` | Job outcome (`queued`, `running`, `succeeded`, `failed`, `cancelled`), without raw OLX data |
+
+**Errors** always have one shape, and `code` is stable, so branch on it rather than on the message:
+
+```json
+{ "error": { "code": "invalid_listing", "message": "The listing body is invalid", "details": { "issues": [{ "path": "locationId", "message": "must be a numeric OLX id" }] }, "requestId": "3f1c…" } }
+```
+
+| `code` | HTTP | Meaning |
+| --- | --- | --- |
+| `unauthorized` | 401 | Missing or wrong `X-Api-Key` |
+| `invalid_product_id`, `invalid_listing`, `invalid_resolution`, `bad_request` | 400 | Fix the request (`details.issues` says what) |
+| `not_found` | 404 | No such link, job or route |
+| `link_conflict`, `healthy_link` | 409 | A resolve would orphan or share an ad (`details.adId`) |
+| `payload_too_large` | 413 | Body over 1 MB |
+| `queue_full` | 429 | Too many products waiting; retry after `Retry-After` |
+| `shutting_down` | 503 | The service is stopping; retry after it restarts |
+| `internal_error` | 500 | Unexpected; details are in the service log |
+
+A **failed job** reports the same shape in `job.error`, with the library's codes: `invalid_listing`, `olx_rejected` (`status` and OLX's own field errors in `details.olxErrors`, e.g. `{"location_id": ["Please select a more specific location."]}`), `auth_failed`, `outcome_unknown`, `image_upload_failed`, `reconcile_required`, or `cancelled`.
+
+**Request ids.** Each response has an `X-Request-Id` header. Send your own (letters, digits, `. _ : -`, up to 64 characters) and it is echoed back, so logs on both sides line up.
 
 Listing body:
 
@@ -246,10 +270,10 @@ Over REST, images are URL-only. By default an image URL must be https and must r
 
 #### Parked products (duplicate protection)
 
-Sometimes OLX may or may not have created an ad: a timeout, a 5xx, a redirect that isn't to a login page, or a response the adapter couldn't read. A failed *image* upload doesn't count, because no ad request has been sent at that point, so it simply fails and can be retried. In that case the product is **parked** with `syncState: "needs_reconcile"` instead of being posted again. If OLX says a linked ad no longer exists, the link is marked `"gone"`. Parked products show up under `needsAttention` in `/status`, and further syncs for them fail with `ReconcileRequiredError` until you resolve them:
+Sometimes OLX may or may not have created an ad: a timeout, a 5xx, a redirect that isn't to a login page, or a response the adapter couldn't read. A failed *image* upload doesn't count, because no ad request has been sent at that point, so it simply fails and can be retried. In that case the product is **parked** with `syncState: "needs_reconcile"` instead of being posted again. If OLX says a linked ad no longer exists, the link is marked `"gone"`. Parked products show up under `needsAttention` in `/v1/status`, and further syncs for them fail with `ReconcileRequiredError` until you resolve them:
 
 ```http
-POST /products/P-100/listing/resolve
+POST /v1/products/P-100/listing/resolve
 { "action": "link", "adId": "123456789" }   # the ad exists on OLX: manage it from now on
 { "action": "forget" }                      # no ad exists: the next sync creates one
 ```
@@ -302,7 +326,7 @@ Under IIS or Apache, `getenv()` often can't see system environment variables. Se
 ```php
 function olxSyncProduct(string $productId, array $listing): array
 {
-    $ch = curl_init('http://127.0.0.1:8787/products/' . rawurlencode($productId) . '/listing');
+    $ch = curl_init('http://127.0.0.1:8787/v1/products/' . rawurlencode($productId) . '/listing');
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST  => 'PUT',
         CURLOPT_HTTPHEADER     => [
@@ -317,10 +341,13 @@ function olxSyncProduct(string $productId, array $listing): array
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    $data = json_decode($body, true);
     if ($status !== 202) {
-        throw new RuntimeException("OLX sync rejected ($status): $body");
+        // e.g. invalid_listing (fix the product), queue_full (retry later), unauthorized (check the key)
+        $code = $data['error']['code'] ?? 'unknown';
+        throw new RuntimeException("OLX sync rejected ($status $code): " . ($data['error']['message'] ?? $body));
     }
-    return json_decode($body, true); // ['jobId' => ..., 'status' => ...]
+    return $data; // ['jobId' => ..., 'status' => 'queued']
 }
 ```
 
@@ -357,16 +384,30 @@ The CLI and the REST service read the same settings from environment variables, 
 
 ## Errors
 
-Every error is an `OlxSdkError`, with subclasses for the cases an app handles differently:
+Every error is an `OlxSdkError` with a stable `code`, the same codes the REST service reports. Branch on `err.code`, or use `instanceof` with the subclasses:
 
-| Error | Meaning | What to do |
-| --- | --- | --- |
-| `MappingError` | The input is invalid (`issues` lists why). Nothing was sent | Fix the input |
-| `AuthError` | No session, or OLX rejected the token (401/403) | `olx-lb login`, then update the token |
-| `OlxHttpError` | OLX refused the request (`status`, and `body` names the field). For example 422 "Please select a more specific location" | Fix the input |
-| `UncertainWriteError` | Sent, but the outcome is unknown. The ad may exist | Don't resend blindly; check My ads (`sync` parks the product for you) |
-| `ImageUploadError` | A photo failed before the ad was sent | Retry |
-| `ReconcileRequiredError` | `sync`: the product is parked or its ad is gone | `sync.link()` or `sync.forget()` |
+| `code` | Class | Meaning | What to do |
+| --- | --- | --- | --- |
+| `invalid_listing` | `MappingError` | The input is invalid (`issues` lists why). Nothing was sent | Fix the input |
+| `auth_failed` | `AuthError` | No session, or OLX rejected the token (401/403) | `olx-lb login`, then update the token |
+| `olx_rejected` | `OlxHttpError` | OLX refused the request (`status`, and `body` names the field). For example 422 "Please select a more specific location" | Fix the input |
+| `outcome_unknown` | `UncertainWriteError` | Sent, but the outcome is unknown. The ad may exist | Don't resend blindly; check My ads (`sync` parks the product for you) |
+| `image_upload_failed` | `ImageUploadError` | A photo failed before the ad was sent | Retry |
+| `reconcile_required` | `ReconcileRequiredError` | `sync`: the product is parked or its ad is gone | `sync.link()` or `sync.forget()` |
+| `link_conflict`, `healthy_link` | `LinkConflictError`, `ForgetConflictError` | `sync.link()` / `forget()` would orphan or share an ad | Pass `replace` / `force` if you mean it |
+
+```ts
+import { OlxSdkError, toErrorInfo } from 'olx-lebanon-sdk';
+
+try {
+  await olx.ads.create(input);
+} catch (err) {
+  if (err instanceof OlxSdkError && err.code === 'olx_rejected') console.warn(toErrorInfo(err).details?.olxErrors);
+  else throw err;
+}
+```
+
+`toErrorInfo(err)` turns any error into `{ code, message, status?, details? }`, ready to log or return from an API route.
 
 ## Status and limits
 

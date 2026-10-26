@@ -19,7 +19,8 @@
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./openapi.json": "./openapi.json"
   },
   "bin": {
     "olx-lb": "dist/cli/index.js",
@@ -30,7 +31,8 @@
     "config/*.example.json",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "openapi.json"
   ],
   "sideEffects": false,
   "engines": {
@@ -48,6 +50,7 @@
     "catalog": "tsx src/cli/index.ts catalog",
     "live-test": "tsx src/cli/index.ts test-post",
     "update-locations": "tsx scripts/update-locations.ts",
+    "openapi": "tsx scripts/write-openapi.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -83,10 +86,11 @@
     }
   },
   "devDependencies": {
+    "@readme/openapi-parser": "^10.0.0",
     "@types/node": "^22.20.5",
+    "playwright": "^1.64.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "vitest": "^2.1.9",
-    "playwright": "^1.64.1"
+    "vitest": "^2.1.9"
   }
 }

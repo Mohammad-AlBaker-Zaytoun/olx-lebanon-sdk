@@ -10,7 +10,7 @@ Do this with **your own account**, and post **one real ad** you actually want li
 ## 1. Record a manual post
 
 ```bash
-npm run capture
+npx olx-lb capture
 ```
 
 A Chromium window opens on OLX. In it:
@@ -35,7 +35,7 @@ Only requests to the OLX domain are recorded, so a Google or Facebook sign-in is
 To see request and response bodies without opening the HAR, run:
 
 ```bash
-npm run capture:shapes
+npx olx-lb capture shapes
 ```
 
 It reads the latest capture and writes `<name>.shapes.txt`: every API call with its query parameter names, request header names, and bodies whose personal values (free text, names, phone numbers, emails, tokens, long ids) are replaced by descriptions such as `<text 42 chars>`. For the `authorization` header it shows only the scheme and, for a JWT, the issuer, lifetime and claim names. Public catalog responses (categories, category fields, location search) are saved verbatim under `<name>.public/`. Skim both before you share them.
@@ -70,7 +70,7 @@ Category trees, attribute definitions and location lookups usually show up as `G
 - `{id}` is replaced with the OLX ad id.
 - Your session (cookies and auth headers) is only sent to the OLX domain and its subdomains. If the capture shows the web app sending its `authorization` header to a different host, for example an upload host, add `"sendSessionToForeignHost": true` to that endpoint only.
 - Use the final URL, not one that redirects: the SDK doesn't follow redirects and treats them as an expired session.
-- Leave anything you didn't see as `null`. `GET /status` on the service shows what's mapped.
+- Leave anything you didn't see as `null`. `olx-lb check` (or `GET /v1/status` on the service) shows what's mapped.
 
 ## 4. Fill in `config/catalog.json`
 
@@ -111,10 +111,10 @@ Tip: put a trimmed, anonymised copy of the real request and response in a unit t
 
 ## 6. Check the auth mechanism
 
-Open `.olx-session/session.json` (never share it) after `npm run login`:
+Open `.olx-session/session.json` (never share it) after `olx-lb login`:
 
 - If `headers.authorization` (or similar) is present, the SDK replays it automatically, to OLX hosts only.
-- If the web app sends its token under a header name that isn't captured, add that name to `OLX_CAPTURE_HEADERS` in `.env` (comma-separated) and run `npm run login` again.
+- If the web app sends its token under a header name that isn't captured, add that name to `OLX_CAPTURE_HEADERS` in `.env` (comma-separated) and run `olx-lb login` again.
 - If the token lives only in `localStorage` (also saved, under `localStorage[origin][key]`), build the header in your adapter:
 
   ```ts
@@ -132,21 +132,21 @@ Open `.olx-session/session.json` (never share it) after `npm run login`:
 
 ## 7. Dry run
 
-The quickest check is `npm run live-test`. It posts, edits and deletes one test product (`captures/test-product.json`) with the same sync code the service uses, and prints the ad's state and photo count on OLX after each step:
+The quickest check is `olx-lb test-post`. It posts, edits and deletes one test product (`olx-test-product.json`) with the same sync code the service uses, and prints the ad's state and photo count on OLX after each step:
 
 ```bash
-npm run live-test -- check    # read-only
-npm run live-test -- create
-npm run live-test -- edit
-npm run live-test -- delete
+npx olx-lb check              # read-only
+npx olx-lb test-post create
+npx olx-lb test-post edit
+npx olx-lb test-post delete
 ```
 
 To test the REST service end to end instead:
 
-1. `npm run build`, then `npm start`.
-2. `GET /status`: confirm `loggedIn: true` and the endpoints you mapped show as configured.
-3. `PUT /products/TEST-1/listing` with one real product, then poll `GET /jobs/:id`.
-4. Check the ad on OLX, then `DELETE /products/TEST-1/listing`.
+1. `npx olx-lb serve`.
+2. `GET /v1/status`: confirm `loggedIn: true` and that `missingEndpoints` is empty.
+3. `PUT /v1/products/TEST-1/listing` with one real product, then poll `GET /v1/jobs/:id`.
+4. Check the ad on OLX, then `DELETE /v1/products/TEST-1/listing`.
 
 ## When it breaks
 
@@ -154,11 +154,11 @@ OLX will change things. Typical symptoms:
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `AuthError` (401/403) on every call | Session expired | `npm run login` |
-| `AuthError` "redirected … to /login" | Session expired, or the path redirects | `npm run login`, or use the final URL in `endpoints.json` |
+| `AuthError` (401/403) on every call | Session expired | `olx-lb login` (and update `OLX_ACCESS_TOKEN` in your app) |
+| `AuthError` "redirected … to /login" | Session expired, or the path redirects | `olx-lb login`, or use the final URL in `endpoints.json` |
 | `AuthError` only on writes | CSRF or new header | Recapture, compare headers, add them via `requestHeaders` |
 | `OlxHttpError` 400/422 on create | New required field or renamed attribute | Recapture, then update `catalog.json` or the adapter |
-| `ReconcileRequiredError` | An earlier create had an unknown outcome, or the ad was removed on OLX | Check "My ads", then `POST /products/:id/listing/resolve` |
+| `ReconcileRequiredError` | An earlier create had an unknown outcome, or the ad was removed on OLX | Check "My ads", then `sync.link()` / `sync.forget()`, or `POST /v1/products/:id/listing/resolve` |
 | Every edited product becomes `gone` | `updateAd` path is wrong, so it 404s | Fix `endpoints.json`, then `link` the products back to their ads |
 
 `logs/requests.jsonl` shows the status and timing of every call, which is usually enough to see which step changed.

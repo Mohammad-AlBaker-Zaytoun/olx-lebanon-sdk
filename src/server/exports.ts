@@ -1,5 +1,6 @@
 /** The REST service and its parts: `import { buildServer } from 'olx-lebanon-sdk/server'`. */
-export { buildServer, type ServerDeps } from './app.js';
+export { API_PREFIX, buildServer, type RestErrorCode, type ServerDeps } from './app.js';
+export { openApiDocument } from './openapi.js';
 export {
   JobQueue,
   QueueFullError,

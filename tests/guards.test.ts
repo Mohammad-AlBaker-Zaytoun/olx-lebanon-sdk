@@ -437,13 +437,13 @@ describe('guards: REST server', () => {
   it('[M38] empty or prefix API keys are rejected', async () => {
     const { app: a } = app();
     for (const key of ['', KEY.slice(0, 4), KEY + 'x']) {
-      expect((await a.inject({ method: 'GET', url: '/status', headers: { 'x-api-key': key } })).statusCode).toBe(401);
+      expect((await a.inject({ method: 'GET', url: '/v1/status', headers: { 'x-api-key': key } })).statusCode).toBe(401);
     }
   });
 
   it('[M52] only exactly /health skips auth', async () => {
     const { app: a } = app();
-    for (const url of ['/healthz', '/health/', '/health-check']) {
+    for (const url of ['/v1/healthz', '/v1/health/', '/v1/health-check']) {
       expect((await a.inject({ method: 'GET', url })).statusCode).toBe(401);
     }
   });
@@ -451,25 +451,25 @@ describe('guards: REST server', () => {
   it('[M20][M21] product ids are validated on PUT and resolve', async () => {
     const { app: a } = app();
     const body = { title: 't', description: 'd', price: 1, categoryKey: 'c', locationKey: 'l' };
-    expect((await a.inject({ method: 'PUT', url: '/products/a%20b/listing', headers: auth, payload: body })).statusCode).toBe(400);
+    expect((await a.inject({ method: 'PUT', url: '/v1/products/a%20b/listing', headers: auth, payload: body })).statusCode).toBe(400);
     expect(
-      (await a.inject({ method: 'POST', url: '/products/a%20b/listing/resolve', headers: auth, payload: { action: 'forget' } })).statusCode,
+      (await a.inject({ method: 'POST', url: '/v1/products/a%20b/listing/resolve', headers: auth, payload: { action: 'forget' } })).statusCode,
     ).toBe(400);
   });
 
   it('[M54][M55][M57][M58] resolve conflicts answer 409 and replace/force are honoured', async () => {
     const { app: a, sync } = app();
     await sync.upsert('P', product); // healthy link to ad-1
-    const post = (payload: object) => a.inject({ method: 'POST', url: '/products/P/listing/resolve', headers: auth, payload });
+    const post = (payload: object) => a.inject({ method: 'POST', url: '/v1/products/P/listing/resolve', headers: auth, payload });
 
     const conflict = await post({ action: 'link', adId: 'ad-2' });
     expect(conflict.statusCode).toBe(409);
-    expect(conflict.json()).toMatchObject({ error: 'link_conflict', adId: 'ad-1' });
+    expect(conflict.json()).toMatchObject({ error: { code: 'link_conflict', details: { adId: 'ad-1' } } });
     expect((await post({ action: 'link', adId: 'ad-2', replace: true })).json()).toMatchObject({ adId: 'ad-2' });
 
     const healthy = await post({ action: 'forget' });
     expect(healthy.statusCode).toBe(409);
-    expect(healthy.json()).toMatchObject({ error: 'healthy_link' });
+    expect(healthy.json()).toMatchObject({ error: { code: 'healthy_link' } });
     expect((await post({ action: 'forget', force: true })).json()).toEqual({ forgotten: true });
   });
 });

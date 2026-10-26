@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { toErrorInfo, type ErrorInfo } from '../errors.js';
 import type { ListingInput } from '../listings/types.js';
 import { silentLogger, type Logger } from '../logger.js';
 
@@ -16,7 +17,8 @@ export interface Job {
   startedAt?: string;
   finishedAt?: string;
   result?: unknown;
-  error?: { name: string; message: string };
+  /** Why the job failed: a stable `code` (e.g. `invalid_listing`, `olx_rejected`), a message, details. */
+  error?: ErrorInfo;
 }
 
 export type JobHandler = (job: Job, payload: ListingInput | undefined) => Promise<unknown>;
@@ -115,7 +117,7 @@ export class JobQueue {
     for (const job of cancelled) {
       job.status = 'cancelled';
       job.finishedAt = new Date().toISOString();
-      job.error = { name: 'Cancelled', message: 'The service stopped before this job ran; send the request again' };
+      job.error = { code: 'cancelled', message: 'The service stopped before this job ran; send the request again' };
       this.payloads.delete(job.id);
       this.settle(job);
     }
@@ -159,9 +161,8 @@ export class JobQueue {
           job.result = await this.handler(job, payload);
           job.status = 'succeeded';
         } catch (err) {
-          const e = err as Error;
           job.status = 'failed';
-          job.error = { name: e.name ?? 'Error', message: e.message ?? String(err) };
+          job.error = toErrorInfo(err);
           this.logger.error('Job failed', { jobId: job.id, productId: job.productId, error: job.error });
         } finally {
           job.finishedAt = new Date().toISOString();
