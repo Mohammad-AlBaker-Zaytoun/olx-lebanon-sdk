@@ -243,6 +243,12 @@ export class SyncService {
     } finally {
       this.inFlight.delete(productId);
     }
+    if (!markerSaved) {
+      // The ListingsPort didn't call beforeSend: no crash protection for this create.
+      this.logger.warn('ListingsPort.create did not call hooks.beforeSend; duplicate protection is degraded', {
+        productId,
+      });
+    }
 
     const record: SyncRecord = {
       productId,

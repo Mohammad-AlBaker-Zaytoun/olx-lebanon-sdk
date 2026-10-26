@@ -20,7 +20,7 @@ import { OlxHttpClient, type Transport } from '../src/http/HttpClient.js';
 import { WriteRateLimiter } from '../src/http/rateLimiter.js';
 import { normalizeStatus, placeholderAdapter } from '../src/listings/adapter.js';
 import { ImageUploader, isPrivateAddress } from '../src/listings/images.js';
-import type { ListingsPort } from '../src/listings/ListingsApi.js';
+import type { CreateHooks, ListingsPort } from '../src/listings/ListingsApi.js';
 import type { ListingInput, OlxAd } from '../src/listings/types.js';
 import type { RequestLog } from '../src/logger.js';
 import { CatalogMapper, parseCatalog } from '../src/mapping/CatalogMapper.js';
@@ -225,7 +225,11 @@ const product: ListingInput = {
 function listings(overrides: Partial<ListingsPort> = {}) {
   const ad: OlxAd = { id: 'ad-1', status: 'active', raw: {} };
   return {
-    create: vi.fn(async () => ad),
+    // Honours the beforeSend contract, like the real ListingsApi.
+    create: vi.fn(async (_input: ListingInput, hooks?: CreateHooks) => {
+      await hooks?.beforeSend?.();
+      return ad;
+    }),
     update: vi.fn(async (id: string) => ({ ...ad, id })),
     delete: vi.fn(async () => {}),
     ...overrides,
@@ -235,7 +239,8 @@ function listings(overrides: Partial<ListingsPort> = {}) {
 describe('SyncService duplicate protection', () => {
   it('parks an uncertain create and never re-posts it until resolved', async () => {
     const l = listings({
-      create: vi.fn(async () => {
+      create: vi.fn(async (_i: ListingInput, hooks?: CreateHooks) => {
+        await hooks?.beforeSend?.();
         throw new UncertainWriteError('createAd', 'timeout');
       }),
     });
@@ -281,15 +286,19 @@ describe('SyncService duplicate protection', () => {
   });
 
   it('clears the marker when a create definitely failed', async () => {
+    let markerDuringSend: string | undefined;
+    const store = new MemorySyncStore();
     const l = listings({
-      create: vi.fn(async () => {
+      create: vi.fn(async (_i: ListingInput, hooks?: CreateHooks) => {
+        await hooks?.beforeSend?.();
+        markerDuringSend = (await store.get('P1'))?.syncState;
         throw new OlxHttpError('createAd', 422, {});
       }),
     });
-    const store = new MemorySyncStore();
     const sync = new SyncService({ listings: l, store });
     await expect(sync.upsert('P1', product)).rejects.toBeInstanceOf(OlxHttpError);
-    expect(await store.get('P1')).toBeUndefined();
+    expect(markerDuringSend).toBe('creating'); // the marker really was written…
+    expect(await store.get('P1')).toBeUndefined(); // …and then cleared
   });
 
   it('a create interrupted by a crash leaves the product parked', async () => {

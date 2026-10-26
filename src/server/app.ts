@@ -5,7 +5,7 @@ import { isSafePathParam } from '../endpoints.js';
 import { ForgetConflictError, LinkConflictError } from '../errors.js';
 import { RestListingSchema } from '../listings/types.js';
 import type { SyncRecord, SyncStore } from '../sync/SyncStore.js';
-import { QueueFullError, type JobQueue } from './queue.js';
+import { QueueFullError, QueueStoppedError, type JobQueue } from './queue.js';
 import { stripRaw } from './webhook.js';
 
 export interface ServerDeps {
@@ -127,6 +127,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
     if (err instanceof QueueFullError) {
       void reply.code(429).header('retry-after', '60').send({ error: 'queue_full', message: err.message });
+      return;
+    }
+    if (err instanceof QueueStoppedError) {
+      void reply.code(503).header('retry-after', '30').send({ error: 'shutting_down', message: err.message });
       return;
     }
     const status = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;

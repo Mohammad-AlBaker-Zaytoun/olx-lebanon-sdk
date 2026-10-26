@@ -304,6 +304,79 @@ describe('round 2: security', () => {
   });
 });
 
+describe('round 2: docs-driven fixes', () => {
+  it('accepts PHP-shaped listings: decimal-string price and [] attributes', async () => {
+    const { RestListingSchema } = await import('../src/listings/types.js');
+    const parsed = RestListingSchema.parse({
+      title: 't',
+      description: 'd',
+      price: '799.00',
+      categoryKey: 'c',
+      locationKey: 'l',
+      attributes: [],
+    });
+    expect(parsed.price).toBe(799);
+    expect(parsed.attributes).toEqual({});
+    expect(RestListingSchema.safeParse({ ...parsed, price: '79x' }).success).toBe(false);
+    expect(RestListingSchema.safeParse({ ...parsed, price: '-1' }).success).toBe(false);
+    expect(RestListingSchema.safeParse({ ...parsed, attributes: ['a'] }).success).toBe(false);
+  });
+
+  it('answers 503 shutting_down after the queue is stopped', async () => {
+    const { buildServer } = await import('../src/server/app.js');
+    const queue = new JobQueue(async () => undefined);
+    const app = buildServer({
+      apiKey: 'test-key-0123456789abcdef',
+      queue,
+      store: new MemorySyncStore(),
+      resolve: { link: vi.fn(), forget: vi.fn() },
+      status: async () => ({}),
+    });
+    queue.stop();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/products/P1/listing',
+      headers: { 'x-api-key': 'test-key-0123456789abcdef' },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ error: 'shutting_down' });
+    await app.close();
+  });
+
+  it('fromConfig logs by default (missing config files are reported)', async () => {
+    const { loadConfig } = await import('../src/config.js');
+    const lines: string[] = [];
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    try {
+      const dir = mkdtempSync(join(tmpdir(), 'olx-cfg-'));
+      OlxClient.fromConfig(
+        loadConfig({
+          OLX_ENDPOINTS_FILE: join(dir, 'missing-endpoints.json'),
+          OLX_CATALOG_FILE: join(dir, 'missing-catalog.json'),
+          OLX_REQUEST_LOG_FILE: join(dir, 'r.jsonl'),
+        }),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(lines.join('')).toMatch(/Catalog file not found/);
+  });
+
+  it('warns when a custom ListingsPort ignores beforeSend', async () => {
+    const warn = vi.fn();
+    const sync = new SyncService({
+      listings: { create: async () => ({ id: 'ad-1', status: 'active', raw: {} }), update: vi.fn(), delete: vi.fn() },
+      store: new MemorySyncStore(),
+      logger: { debug() {}, info() {}, warn, error() {} },
+    });
+    await sync.upsert('P', product);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/beforeSend/), expect.anything());
+  });
+});
+
 describe('round 2: shutdown and storage', () => {
   it('queue.stop() cancels queued jobs so shutdown waits only for the running one', async () => {
     let release!: () => void;
@@ -326,7 +399,7 @@ describe('round 2: shutdown and storage', () => {
     expect(ran).toEqual(['A']);
     expect(queue.get(b.id)?.status).toBe('cancelled');
     expect(settled).toEqual(['B:cancelled', 'C:cancelled', 'A:succeeded']);
-    expect(() => queue.enqueue('remove', 'D')).toThrow(/stopped/);
+    expect(() => queue.enqueue('remove', 'D')).toThrow(/shutting down/);
   });
 
   it('JsonFileSyncStore rolls back memory when the write fails', async () => {

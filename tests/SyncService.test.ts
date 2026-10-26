@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { ListingsPort } from '../src/listings/ListingsApi.js';
+import type { CreateHooks, ListingsPort } from '../src/listings/ListingsApi.js';
 import type { ListingInput } from '../src/listings/types.js';
 import { hashListing, SyncService } from '../src/sync/SyncService.js';
 import { JsonFileSyncStore, MemorySyncStore } from '../src/sync/SyncStore.js';
@@ -21,7 +21,8 @@ function fakeListings(): ListingsPort & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
-    create: vi.fn(async () => {
+    create: vi.fn(async (_input: ListingInput, hooks?: CreateHooks) => {
+      await hooks?.beforeSend?.();
       calls.push('create');
       return { id: 'ad-1', status: 'pending_review' as const, url: 'https://olx.test/ad-1', raw: {} };
     }),

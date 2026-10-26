@@ -30,6 +30,13 @@ export interface JobQueueOptions {
   onSettled?: (job: Job) => void;
 }
 
+export class QueueStoppedError extends Error {
+  constructor() {
+    super('The service is shutting down and not accepting new jobs; retry after it restarts');
+    this.name = 'QueueStoppedError';
+  }
+}
+
 export class QueueFullError extends Error {
   constructor(max: number) {
     super(`The sync queue already holds ${max} waiting products; retry later`);
@@ -61,7 +68,7 @@ export class JobQueue {
   }
 
   enqueue(type: JobType, productId: string, payload?: ListingInput, opts: { force?: boolean } = {}): Job {
-    if (this.stopped) throw new Error('Job queue is stopped');
+    if (this.stopped) throw new QueueStoppedError();
     const waitingId = this.pendingByProduct.get(productId);
     if (waitingId) {
       const job = this.jobs.get(waitingId)!;

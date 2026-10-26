@@ -37,14 +37,26 @@ export interface OlxAd {
  * Schema for listings arriving over the REST API. Images are URL-only there, so a
  * caller can't make the service read arbitrary local files.
  */
+/** PHP sends SQL Server decimals as strings ("799.00"); accept plain decimal strings too. */
+const Price = z.preprocess(
+  (v) => (typeof v === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : v),
+  z.number().finite().nonnegative(),
+);
+
+/** PHP's json_encode turns an empty associative array into `[]`; treat it as `{}`. */
+const Attributes = z.preprocess(
+  (v) => (Array.isArray(v) && v.length === 0 ? {} : v),
+  z.record(z.union([z.string(), z.number(), z.boolean()])),
+);
+
 export const RestListingSchema = z.object({
   title: z.string().trim().min(1),
   description: z.string().trim().min(1),
-  price: z.number().nonnegative(),
+  price: Price,
   currency: z.enum(['USD', 'LBP']).default('USD'),
   categoryKey: z.string().min(1),
   locationKey: z.string().min(1),
-  attributes: z.record(z.union([z.string(), z.number(), z.boolean()])).default({}),
+  attributes: Attributes.default({}),
   images: z
     .array(
       z.object({

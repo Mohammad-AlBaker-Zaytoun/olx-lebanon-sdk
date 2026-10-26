@@ -47,6 +47,7 @@ export { buildServer, type ServerDeps } from './server/app.js';
 export {
   JobQueue,
   QueueFullError,
+  QueueStoppedError,
   type Job,
   type JobHandler,
   type JobQueueOptions,

@@ -153,25 +153,38 @@ A product whose create is running right now is not listed under `needsAttention`
 - Jobs run one at a time.
 - A new request for a product that is already waiting replaces the waiting job.
 - At most 2,000 products can wait at once. Beyond that, `PUT`/`DELETE` answer `429 queue_full` with `Retry-After`.
-- On shutdown (Ctrl+C or a service stop), the running job is allowed to finish. Waiting jobs are marked `cancelled` and reported to the webhook, so resend them after a restart.
+- On shutdown (Ctrl+C or a service stop), the running job is allowed to finish. Waiting jobs are marked `cancelled` and reported to the webhook, so resend them after a restart. Requests that arrive during shutdown get `503 shutting_down`.
 
 ### Webhooks
 
 If `WEBHOOK_URL` is set, every finished job is POSTed there, minus raw OLX responses. Each request is signed with `WEBHOOK_SECRET`, which must differ from `SERVER_API_KEY`. The headers are `X-Olx-Sdk-Timestamp` (unix seconds) and `X-Olx-Sdk-Signature: sha256=<hex HMAC of "timestamp.body">`. Redirects are refused, and plain http is only allowed for localhost. Verifying in PHP, where `OLX_WEBHOOK_SECRET` in your store's environment must hold the same value as `WEBHOOK_SECRET` here:
 
 ```php
+$secret = getenv('OLX_WEBHOOK_SECRET');
+if (!is_string($secret) || strlen($secret) < 16) {
+    // Never verify with an empty/missing secret: hash_hmac would accept forged requests.
+    http_response_code(500);
+    exit('OLX_WEBHOOK_SECRET is not configured');
+}
 $body = file_get_contents('php://input');
 $ts   = $_SERVER['HTTP_X_OLX_SDK_TIMESTAMP'] ?? '';
 $sig  = $_SERVER['HTTP_X_OLX_SDK_SIGNATURE'] ?? '';
-$ok   = abs(time() - (int) $ts) < 300
-     && hash_equals('sha256=' . hash_hmac('sha256', "$ts.$body", getenv('OLX_WEBHOOK_SECRET')), $sig);
+$ok   = ctype_digit($ts)
+     && abs(time() - (int) $ts) < 300
+     && hash_equals('sha256=' . hash_hmac('sha256', "$ts.$body", $secret), $sig);
 if (!$ok) { http_response_code(401); exit; }
 $job = json_decode($body, true);
 ```
 
+Under IIS or Apache, `getenv()` often can't see system environment variables. Set the secret where PHP can read it, for example in your app's config file, and keep the empty-secret check.
+
 ### Calling it from PHP
 
 `OLX_SDK_API_KEY` in your store's environment must hold the same value as `SERVER_API_KEY` in this project's `.env`.
+
+- **Product ids** may contain letters, digits and `. _ : -`, up to 128 characters.
+- **`price`** may be a number or a decimal string (`"799.00"`, which is how SQL Server decimals often arrive).
+- **`attributes`** may be an empty PHP array: `json_encode([])` produces `[]`, which is accepted as "no attributes".
 
 ```php
 function olxSyncProduct(string $productId, array $listing): array
@@ -199,6 +212,8 @@ function olxSyncProduct(string $productId, array $listing): array
 ```
 
 ## Using the SDK directly
+
+The package is **ESM-only**. Use `import`, not `require()`, from a project with `"type": "module"` in its `package.json` (or from `.mjs` files). That also makes the top-level `await` below work.
 
 From another Node project, install it from a local clone or the git URL. The `prepare` script builds `dist/` on install:
 
@@ -229,6 +244,8 @@ console.log(result.action); // "created" | "updated" | "unchanged"
 
 `client.sync` also has `remove`, `link` and `forget`. Calls for the same product are serialised. Lower-level access goes through `client.listings.create / update / delete / get / listMine`.
 
+`fromConfig` logs to stderr at `LOG_LEVEL`. Pass `logger: silentLogger` to mute it, or your own `Logger`. Timeouts and limits can be tuned with `http: { timeoutMs, maxReadRetries }` and `images: { maxBytes, timeoutMs, totalTimeoutMs, maxRedirects }`.
+
 Use **one process per sync store**. Two processes sharing `data/sync-store.json` would overwrite each other's records. To use the SDK alongside the REST service, call the service, or give each process its own store.
 
 ### Extension points
@@ -239,6 +256,7 @@ Use **one process per sync store**. Two processes sharing `data/sync-store.json`
 | `SyncStore` | `JsonFileSyncStore` | store product ↔ ad links in SQL Server, MySQL, etc. |
 | `SessionStore` | `FileSessionStore` | keep the session in a secrets manager |
 | `Logger` / `RequestLog` | JSON lines | plug in pino, winston, your log stack |
+| `ListingsPort` | `ListingsApi` | wrap or replace the OLX calls. `create` **must** await `hooks.beforeSend()` right before sending the ad, or crash-time duplicate protection is lost (a warning is logged if it isn't called) |
 
 ## Configuration
 
@@ -257,7 +275,7 @@ All settings are environment variables. See [`.env.example`](.env.example) for t
 
 ## Security notes
 
-- `.olx-session/` and `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored and written owner-only. Never commit or share them. The `.summary.txt` next to a capture only lists methods, paths and status codes. Ids, tokens, emails and phone-like path segments are replaced with `{id}`. Still, skim it before sharing.
+- `.olx-session/` and `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored. On Linux and macOS they are written owner-only (`0600`/`0700`). On Windows, file modes have no effect and the files inherit the folder's permissions, so keep the project in your own user folder, not a shared one. Never commit or share them. The `.summary.txt` next to a capture only lists methods, paths and status codes. Ids, tokens, emails and phone-like path segments are replaced with `{id}`. Still, skim it before sharing.
 - `session.json` keeps only cookies and storage for OLX (and `OLX_EXTRA_HOSTS`). If you sign in with Google or Facebook, those sites' cookies are not saved.
 - Your session's cookies and auth headers are only sent to the OLX domain and its subdomains. An endpoint on another host gets them only if you set `sendSessionToForeignHost` for it. Redirects from OLX are never followed. Only https endpoints are called.
 - The request log (`logs/requests.jsonl`) records method, path, status and timing only. It contains no bodies, cookies, tokens or query strings, and neither do image error messages.

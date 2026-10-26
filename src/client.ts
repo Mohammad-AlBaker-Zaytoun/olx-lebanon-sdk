@@ -2,12 +2,12 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OlxConfig, WriteLimits } from './config.js';
 import { endpointStatus, loadEndpoints, type EndpointMap, type EndpointName } from './endpoints.js';
-import { OlxHttpClient, type Transport } from './http/HttpClient.js';
+import { OlxHttpClient, type HttpClientOptions, type Transport } from './http/HttpClient.js';
 import { WriteRateLimiter, type RateLimiterClock } from './http/rateLimiter.js';
 import { placeholderAdapter, type OlxAdapter } from './listings/adapter.js';
-import { ImageUploader } from './listings/images.js';
+import { ImageUploader, type ImageUploaderOptions } from './listings/images.js';
 import { ListingsApi } from './listings/ListingsApi.js';
-import { FileRequestLog, silentLogger, type Logger, type RequestLog } from './logger.js';
+import { FileRequestLog, createLogger, silentLogger, type Logger, type RequestLog } from './logger.js';
 import { CatalogMapper, loadCatalog, type Catalog } from './mapping/CatalogMapper.js';
 import { DEFAULT_CAPTURED_HEADERS, SessionManager } from './session/SessionManager.js';
 import { FileSessionStore, type SessionStore } from './session/storage.js';
@@ -33,6 +33,10 @@ export interface OlxClientOptions {
   extraHosts?: string[];
   /** Header names captured at login, in addition to the defaults. */
   captureHeaders?: string[];
+  /** Tuning for calls to OLX. */
+  http?: Pick<HttpClientOptions, 'timeoutMs' | 'maxReadRetries' | 'retryBaseMs' | 'maxRetryDelayMs'>;
+  /** Tuning for product image downloads. */
+  images?: Pick<ImageUploaderOptions, 'maxBytes' | 'timeoutMs' | 'totalTimeoutMs' | 'maxRedirects'>;
 }
 
 /** Everything wired together. Most users only need `client.sync` (or `client.listings`). */
@@ -67,6 +71,7 @@ export class OlxClient {
       requestLog: opts.requestLog,
       transport: opts.transport,
       extraHeaders: adapter.requestHeaders?.bind(adapter),
+      ...opts.http,
     });
     this.mapper = new CatalogMapper(opts.catalog);
     const images = new ImageUploader({
@@ -75,18 +80,22 @@ export class OlxClient {
       allowedHosts: opts.allowedImageHosts,
       fetchImpl: opts.imageFetch,
       resolveHost: opts.resolveHost,
+      ...opts.images,
     });
     this.listings = new ListingsApi({ http: this.http, mapper: this.mapper, adapter, images });
     this.syncStore = opts.syncStore;
     this.sync = new SyncService({ listings: this.listings, store: opts.syncStore, mapper: this.mapper, logger });
   }
 
-  /** Builds a client from `loadConfig()` output, using file-based stores. */
+  /**
+   * Builds a client from `loadConfig()` output, using file-based stores. Logs to stderr at
+   * LOG_LEVEL unless you pass your own `logger` (pass `silentLogger` to mute it).
+   */
   static fromConfig(
     config: OlxConfig,
     overrides: Partial<Omit<OlxClientOptions, 'baseUrl' | 'writeLimits'>> = {},
   ): OlxClient {
-    const logger = overrides.logger ?? silentLogger;
+    const logger = overrides.logger ?? createLogger(config.logLevel);
     for (const [label, file, provided] of [
       ['Endpoints file', config.endpointsFile, overrides.endpoints],
       ['Catalog file', config.catalogFile, overrides.catalog],
@@ -110,6 +119,7 @@ export class OlxClient {
       syncStore: overrides.syncStore ?? new JsonFileSyncStore(config.syncStoreFile),
       requestLog: overrides.requestLog ?? new FileRequestLog(config.requestLogFile),
       ...overrides,
+      logger,
     });
   }
 
