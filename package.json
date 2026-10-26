@@ -2,7 +2,20 @@
   "name": "olx-lebanon-sdk",
   "version": "0.3.0",
   "description": "Post, edit and delete your own OLX Lebanon ads from Node.js and Next.js: typed client, product sync, catalog lookup, CLI and an optional REST service.",
-  "private": true,
+  "license": "MIT",
+  "author": "Mohammad AlBaker Zaytoun (https://www.zaytoun.dev/)",
+  "homepage": "https://github.com/Mohammad-AlBaker-Zaytoun/olx-lebanon-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mohammad-AlBaker-Zaytoun/olx-lebanon-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Mohammad-AlBaker-Zaytoun/olx-lebanon-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -77,8 +90,6 @@
     "typescript",
     "unofficial"
   ],
-  "author": "Mohammad AlBaker Zaytoun (https://www.zaytoun.dev/)",
-  "license": "MIT",
   "dependencies": {
     "dotenv": "^16.6.1",
     "fastify": "^5.12.7",
