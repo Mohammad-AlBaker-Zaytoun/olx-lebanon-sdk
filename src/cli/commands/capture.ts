@@ -1,7 +1,7 @@
 import { chmod, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadConfig } from '../../config.js';
-import { loadPlaywright } from '../../session/SessionManager.js';
+import { loadPlaywright } from '../../session/playwright.js';
 import { FileSessionStore } from '../../session/storage.js';
 import { formatHarSummary, formatHostActivity, summarizeHar, tallyHosts, type HarLike } from '../../tools/har.js';
 import { buildShapeReport, type HarFull } from '../../tools/harShapes.js';

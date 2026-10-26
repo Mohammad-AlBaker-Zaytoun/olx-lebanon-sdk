@@ -63,7 +63,13 @@ export function hashImages(images: ImageSource[] | undefined): string {
     .digest('hex');
 }
 
-const isGone = (err: unknown): boolean => err instanceof OlxHttpError && (err.status === 404 || err.status === 410);
+/**
+ * The ad itself is gone only when the edit or delete request answers 404/410. A 404 from another
+ * call in the same operation (the account, the photo lookup, a photo upload) says nothing about
+ * the ad, and treating it as "gone" would invite posting a duplicate of a live ad.
+ */
+const isGone = (err: unknown, endpoint: 'updateAd' | 'deleteAd'): boolean =>
+  err instanceof OlxHttpError && err.endpoint === endpoint && (err.status === 404 || err.status === 410);
 
 export interface SyncServiceDeps {
   listings: ListingsPort;
@@ -114,17 +120,29 @@ export class SyncService {
    * both would leave an ad live but unmanaged, or two products editing one ad.
    */
   link(productId: string, adId: string, opts: { replace?: boolean } = {}): Promise<SyncRecord> {
-    return this.withLock(productId, async () => {
-      if (!isSafePathParam(adId)) throw new OlxSdkError(`Invalid ad id "${adId}"`);
+    if (!isSafePathParam(adId)) return Promise.reject(new OlxSdkError(`Invalid ad id "${adId}"`));
+    return this.linkLocked(productId, adId, opts, 0);
+  }
+
+  /**
+   * Runs under the locks of both this product and the product currently holding the ad, so an
+   * upsert of the holder that is in flight can't write its link back after it was moved here.
+   */
+  private async linkLocked(productId: string, adId: string, opts: { replace?: boolean }, attempt: number): Promise<SyncRecord> {
+    const holderNow = await this.holderOf(adId, productId);
+    const ids = holderNow ? [productId, holderNow] : [productId];
+    const result = await this.withLocks(ids, async () => {
+      const holder = await this.holderOf(adId, productId);
+      // Another product took the ad while we waited for the locks: start over with that one.
+      if (holder !== holderNow) return undefined;
       const existing = await this.d.store.get(productId);
       if (existing && !existing.syncState && existing.adId !== adId && !opts.replace) {
         throw new LinkConflictError(productId, existing.adId);
       }
-      const holder = (await this.d.store.all()).find((r) => r.productId !== productId && r.adId === adId);
       if (holder) {
-        if (!opts.replace) throw new LinkConflictError(productId, adId, holder.productId);
-        await this.d.store.delete(holder.productId);
-        this.logger.warn('Moved ad link from another product', { adId, from: holder.productId, to: productId });
+        if (!opts.replace) throw new LinkConflictError(productId, adId, holder);
+        await this.d.store.delete(holder);
+        this.logger.warn('Moved ad link from another product', { adId, from: holder, to: productId });
       }
       const ts = this.now().toISOString();
       const record: SyncRecord = {
@@ -139,6 +157,20 @@ export class SyncService {
       this.logger.info('Linked product to OLX ad', { productId, adId });
       return record;
     });
+    if (result) return result;
+    if (attempt >= 5) throw new OlxSdkError(`Ad ${adId} kept changing hands while linking; try again`);
+    return this.linkLocked(productId, adId, opts, attempt + 1);
+  }
+
+  private async holderOf(adId: string, except: string): Promise<string | undefined> {
+    return (await this.d.store.all()).find((r) => r.productId !== except && r.adId === adId)?.productId;
+  }
+
+  /** Locks several products, always in the same order, so two calls can't wait on each other. */
+  private withLocks<T>(productIds: string[], fn: () => Promise<T>): Promise<T> {
+    const [first, ...rest] = [...new Set(productIds)].sort();
+    if (first === undefined) return fn();
+    return this.withLock(first, () => this.withLocks(rest, fn));
   }
 
   /**
@@ -183,7 +215,7 @@ export class SyncService {
         photosUnchanged: !opts.force && existing.imagesHash !== undefined && existing.imagesHash === hashImages(input.images),
       });
     } catch (err) {
-      if (isGone(err)) {
+      if (isGone(err, 'updateAd')) {
         await this.d.store.set({
           ...existing,
           status: 'deleted',
@@ -330,7 +362,7 @@ export class SyncService {
       try {
         await this.d.listings.delete(existing.adId);
       } catch (err) {
-        if (!isGone(err)) throw err;
+        if (!isGone(err, 'deleteAd')) throw err;
         alreadyGone = true;
       }
     }

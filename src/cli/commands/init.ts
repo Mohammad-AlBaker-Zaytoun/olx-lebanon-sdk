@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative } from 'node:path';
 import type { Command } from '../index.js';
 import { parseFlags, resolveFrom, type CliContext } from '../util.js';
@@ -64,6 +64,8 @@ function write(ctx: CliContext, path: string, content: string, force: boolean, m
   if (existed && !force) return 'kept';
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, content, mode ? { mode } : undefined);
+  // `mode` only applies when the file is created: tighten an existing file too (no effect on Windows).
+  if (mode) chmodSync(abs, mode);
   return existed ? 'replaced' : 'created';
 }
 

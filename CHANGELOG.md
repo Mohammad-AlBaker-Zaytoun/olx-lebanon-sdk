@@ -34,6 +34,11 @@ A library you install in a Node.js or Next.js app and call directly.
 
 ### Security
 
+- An edit or delete marks an ad as gone only when that request itself answers 404/410. Before, a 404 from another call in the same operation (the account, a photo upload) marked a live ad as gone, inviting a duplicate.
+- `sync.link(…, { replace: true })` waits for a sync of the product that currently holds the ad, so the ad can't end up linked to two products.
+- `olx-lb init --force` makes an existing `.env` owner-only, as a new one is.
+- REST: listing bodies are capped (title 1,000 and description 20,000 characters, 100 attributes), so a queue full of large bodies can't exhaust memory.
+- The published types no longer reference `playwright`, so apps without it type-check with `skipLibCheck: false`. `loadPlaywright` is no longer exported.
 - zod 4 (fixes GHSA-mrhx-c7xc-m3w5 in zod 3). Validation messages for wrong types now read like "Invalid input: expected number, received string"; error codes and issue paths are unchanged.
 - REST photo URLs must be http(s); a malformed URL is a 400 `invalid_listing` instead of an internal error.
 

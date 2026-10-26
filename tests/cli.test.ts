@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -86,6 +86,14 @@ describe('olx-lb', () => {
 
       await main(['init', '--yes', '--force'], t.c);
       expect(readFileSync(join(t.cwd, '.env'), 'utf8')).not.toContain(key);
+    });
+
+    it.skipIf(process.platform === 'win32')('--force also makes an existing world-readable .env owner-only', async () => {
+      const t = ctx();
+      writeFileSync(join(t.cwd, '.env'), 'OLD=1\n', { mode: 0o644 });
+      chmodSync(join(t.cwd, '.env'), 0o644);
+      await main(['init', '--yes', '--force'], t.c);
+      expect(statSync(join(t.cwd, '.env')).mode & 0o777).toBe(0o600);
     });
   });
 

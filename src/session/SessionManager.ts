@@ -1,6 +1,6 @@
-import type * as Playwright from 'playwright';
-import { AuthError, OlxSdkError } from '../errors.js';
+import { AuthError } from '../errors.js';
 import { silentLogger, type Logger } from '../logger.js';
+import { loadPlaywright } from './playwright.js';
 import type { SessionData, SessionStore, StoredCookie } from './storage.js';
 
 export interface SessionProvider {
@@ -58,22 +58,6 @@ export function scopeStorageState(
 export function preferCapturedHeader(name: string, current: string | undefined, next: string): string {
   if (name === 'authorization' && current && /^bearer\s/i.test(current) && !/^bearer\s/i.test(next)) return current;
   return next;
-}
-
-/**
- * Playwright is an optional peer dependency: only `olx-lb login` and `olx-lb capture` need it.
- * The specifier is hidden from bundlers (Next.js, webpack) so apps that never log in from
- * code don't need it installed.
- */
-export async function loadPlaywright(): Promise<typeof Playwright> {
-  const name = 'playwright';
-  try {
-    return (await import(/* webpackIgnore: true */ /* @vite-ignore */ name)) as typeof Playwright;
-  } catch {
-    throw new OlxSdkError(
-      'Signing in opens a browser, which needs Playwright: run `npm install playwright` and `npx playwright install chromium`.',
-    );
-  }
 }
 
 /** Headers worth replaying if the web app sends them on authenticated calls. Extend via options. */

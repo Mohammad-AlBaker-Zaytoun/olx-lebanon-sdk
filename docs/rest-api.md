@@ -109,10 +109,10 @@ Check `session.loggedIn` and `needsAttention` from your monitoring.
 | `currency` | `USD` (default) or `LBP`. |
 | `categoryId` or `categoryKey` | OLX's category id, or a key from `config/catalog.json`. Exactly one. |
 | `locationId` or `locationKey` | An OLX **area** id, or a key from the catalog file. Exactly one. |
-| `attributes` | The category's fields with OLX's values (or your names, with a `categoryKey`). An empty array `[]` (PHP's `json_encode([])`) counts as none. |
+| `attributes` | The category's fields with OLX's values (or your names, with a `categoryKey`). An empty array `[]` (PHP's `json_encode([])`) counts as none. At most 100. |
 | `images` | Up to 20 `{ "url": "https://…" }`. URL-only over REST. |
 
-Ids may be strings or numbers. Find them with `npx olx-lb catalog …` ([how](getting-started.md#3-find-the-ids-for-your-ad)).
+Ids may be strings or numbers. To keep the queue small in memory, a request is refused at once (400) with a title over 1,000 characters, a description over 20,000, or an attribute value over 1,000; OLX's own limits are checked when the job runs. Find them with `npx olx-lb catalog …` ([how](getting-started.md#3-find-the-ids-for-your-ad)).
 
 ## Jobs
 

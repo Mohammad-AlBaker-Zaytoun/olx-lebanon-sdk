@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { OlxHttpError } from '../src/errors.js';
 import type { CreateHooks, ListingsPort } from '../src/listings/ListingsApi.js';
 import type { ListingInput } from '../src/listings/types.js';
 import { hashListing, SyncService } from '../src/sync/SyncService.js';
@@ -107,5 +108,74 @@ describe('upsert with force', () => {
     await sync.upsert('P1', { ...product, price: 99 }, { force: true });
     const opts = vi.mocked(listings.update).mock.calls.map((c) => c[2]);
     expect(opts).toEqual([{ photosUnchanged: true }, { photosUnchanged: false }]);
+  });
+});
+
+describe('an ad is "gone" only when the edit or delete itself says so', () => {
+  it.each(['signImageUpload', 'signedUpload', 'currentUser', 'listMyAds'])(
+    'a 404 from %s leaves the link healthy and reports olx_rejected',
+    async (endpoint) => {
+      const listings = fakeListings();
+      const store = new MemorySyncStore();
+      const sync = new SyncService({ listings, store });
+      await sync.upsert('P1', product);
+      vi.mocked(listings.update).mockRejectedValueOnce(new OlxHttpError(endpoint, 404, {}));
+      await expect(sync.upsert('P1', { ...product, price: 99 })).rejects.toMatchObject({ code: 'olx_rejected' });
+      const record = await store.get('P1');
+      expect(record?.adId).toBe('ad-1');
+      expect(record?.syncState).toBeUndefined();
+      vi.mocked(listings.delete).mockRejectedValueOnce(new OlxHttpError(endpoint, 404, {}));
+      await expect(sync.remove('P1')).rejects.toMatchObject({ code: 'olx_rejected' });
+      expect(await store.get('P1')).toMatchObject({ adId: 'ad-1' });
+    },
+  );
+
+  it('a 404 from the edit itself marks the link gone; from the delete, removes it', async () => {
+    const listings = fakeListings();
+    const store = new MemorySyncStore();
+    const sync = new SyncService({ listings, store });
+    await sync.upsert('P1', product);
+    vi.mocked(listings.update).mockRejectedValueOnce(new OlxHttpError('updateAd', 404, {}));
+    await expect(sync.upsert('P1', { ...product, price: 99 })).rejects.toMatchObject({ code: 'reconcile_required' });
+    expect(await store.get('P1')).toMatchObject({ syncState: 'gone' });
+
+    await sync.upsert('P2', product);
+    vi.mocked(listings.delete).mockRejectedValueOnce(new OlxHttpError('deleteAd', 410, {}));
+    expect(await sync.remove('P2')).toMatchObject({ action: 'deleted', alreadyGone: true });
+  });
+});
+
+describe('link with replace while the holder is syncing', () => {
+  it('waits for the holder, so the ad ends up with one product only', async () => {
+    const listings = fakeListings();
+    const store = new MemorySyncStore();
+    const sync = new SyncService({ listings, store });
+    await sync.upsert('P1', product); // P1 → ad-1
+    let release!: () => void;
+    vi.mocked(listings.update).mockImplementationOnce(
+      (adId: string) =>
+        new Promise((resolve) => {
+          release = () => resolve({ id: adId, status: 'active', raw: {} });
+        }),
+    );
+    const editing = sync.upsert('P1', { ...product, price: 99 }); // in flight
+    await new Promise((r) => setTimeout(r, 10));
+    const linking = sync.link('P2', 'ad-1', { replace: true });
+    await new Promise((r) => setTimeout(r, 10));
+    release();
+    await editing;
+    await linking;
+    expect((await store.all()).map((r) => `${r.productId}->${r.adId}`)).toEqual(['P2->ad-1']);
+  });
+
+  it('two links that swap ads do not wait on each other', async () => {
+    const listings = fakeListings();
+    const store = new MemorySyncStore();
+    const sync = new SyncService({ listings, store });
+    await sync.link('A', 'ad-a');
+    await sync.link('B', 'ad-b');
+    await Promise.all([sync.link('A', 'ad-b', { replace: true }), sync.link('B', 'ad-a', { replace: true })]);
+    const links = (await store.all()).map((r) => r.adId).sort();
+    expect(new Set(links).size).toBe(links.length); // never two products on one ad
   });
 });

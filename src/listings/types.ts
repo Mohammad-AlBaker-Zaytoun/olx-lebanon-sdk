@@ -93,13 +93,17 @@ const OlxId = z
 /** PHP's json_encode turns an empty associative array into `[]`; treat it as `{}`. */
 const Attributes = z.preprocess(
   (v) => (Array.isArray(v) && v.length === 0 ? {} : v),
-  z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
+  z
+    .record(z.string().max(100), z.union([z.string().max(1_000), z.number(), z.boolean()]))
+    .refine((a) => Object.keys(a).length <= 100, 'at most 100 attributes'),
 );
 
 export const RestListingSchema = z
   .object({
-    title: z.string().trim().min(1),
-    description: z.string().trim().min(1),
+    // Generous caps on what the queue holds in memory; OLX's own limits (70 / 4,096) are
+    // checked when the job runs, so a catalog can still change them.
+    title: z.string().trim().min(1).max(1_000),
+    description: z.string().trim().min(1).max(20_000),
     price: Price,
     currency: z.enum(['USD', 'LBP']).default('USD'),
     categoryKey: z.string().min(1).optional(),

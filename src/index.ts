@@ -80,7 +80,6 @@ export {
 } from './mapping/CatalogMapper.js';
 export {
   DEFAULT_CAPTURED_HEADERS,
-  loadPlaywright,
   preferCapturedHeader,
   scopeStorageState,
   SessionManager,
