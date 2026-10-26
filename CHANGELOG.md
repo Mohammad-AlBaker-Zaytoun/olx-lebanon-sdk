@@ -4,6 +4,11 @@
 
 A library you install in a Node.js or Next.js app and call directly.
 
+### Verified live (26 Oct 2026)
+
+- Laptops (USD): create with a photo, edit keeping photos, edit replacing photos, delete, using an access token only.
+- Mobile phones (LBP): create with a photo and no location, so the store-wide default (Beirut > Downtown) and the description footer applied; OLX stored 9,000,000 LL, the brand, the area and the footer. Edited in place (photos kept), then deleted.
+
 ### Added
 
 - Store-wide `listingDefaults` in the catalog: a default location for listings that don't give one, and a `descriptionFooter` added to every description ("Delivery all over Lebanon"). Both count in the sync fingerprint; over REST, the location may now be left out.
