@@ -13,7 +13,7 @@ import { parseEndpoints, type EndpointMap } from '../endpoints.js';
 import { OlxSdkError } from '../errors.js';
 import { normalizeStatus, type OlxAdapter } from './adapter.js';
 import type { SessionData } from '../session/storage.js';
-import type { AccountInfo, OlxAd } from './types.js';
+import type { AccountInfo, AdStatus, OlxAd } from './types.js';
 
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Rec) : {});
@@ -149,15 +149,25 @@ function isoDate(v: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * OLX keeps two states. `state` is the backend's, and changes at once (`active`, `inactive`,
+ * `sold`…). `virtualState` is what the website shows, and catches up later; a deactivated ad can
+ * even show as `limited` there. So `inactive` and `sold` come from `state`; boosts, review and
+ * limits from `virtualState`.
+ */
+const BACKEND_STATES: Record<string, AdStatus> = { inactive: 'inactive', disabled: 'inactive', sold: 'sold', deleted: 'deleted' };
+
 /** Turns a raw ad from any of OLX's responses into an `OlxAd`. */
 function toAd(o: Rec, raw: unknown): OlxAd {
   const id = str(o.externalID) ?? str(o.external_id);
   if (!id) throw new OlxSdkError('No externalID in the OLX ad data; the response format may have changed');
+  const backend = str(o.state)?.toLowerCase();
   const state = str(o.virtualState) ?? str(o.state);
   const expiresAt = isoDate(o.expiresAt);
+  const fromBackend = backend ? BACKEND_STATES[backend] : undefined;
   return {
     id,
-    ...olxLebanonState(state),
+    ...(fromBackend ? { status: fromBackend } : olxLebanonState(state)),
     title: str(o.title),
     ...(state ? { state } : {}),
     ...(expiresAt ? { expiresAt } : {}),

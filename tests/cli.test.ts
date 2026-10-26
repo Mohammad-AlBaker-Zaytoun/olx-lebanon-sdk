@@ -130,3 +130,20 @@ describe('parseFlags', () => {
     expect(() => parseFlags(['--json=1'], { json: 'boolean' })).toThrow(/takes no value/);
   });
 });
+
+describe('ads command', () => {
+  it('checks its arguments before calling OLX', async () => {
+    const t = ctx();
+    expect(await main(['ads', 'sold', '117000001'], t.c)).toBe(2);
+    expect(t.err.join('\n')).toMatch(/--on olx or --on elsewhere/);
+    expect(await main(['ads', 'deactivate'], t.c)).toBe(2);
+    expect(await main(['ads', 'deactivate', '../etc'], t.c)).toBe(2);
+    expect(await main(['ads', 'explode', '117000001'], t.c)).toBe(2);
+  });
+
+  it('is listed in help', async () => {
+    const t = ctx();
+    await main(['help'], t.c);
+    expect(t.out.join('\n')).toMatch(/ads\s+Your ads on OLX/);
+  });
+});

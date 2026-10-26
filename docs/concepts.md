@@ -8,6 +8,7 @@ How the SDK behaves, and why. Read this before you wire it into a production app
 - [Pacing](#pacing)
 - [Photos](#photos)
 - [Ad status](#ad-status)
+- [Ad lifecycle](#ad-lifecycle)
 - [Categories, fields and locations](#categories-fields-and-locations)
 - [Your own names: the catalog](#your-own-names-the-catalog)
 - [Store-wide defaults](#store-wide-defaults)
@@ -100,7 +101,7 @@ In practice: a sync of 20 changed products takes about 25 minutes. Run it in the
 
 ## Photos
 
-`images` is a list of up to 20 sources (OLX's limit, checked before sending, like the 70-character title and 4,096-character description; a catalog's `limits` can change them):
+`images` is a list of 1 to 20 sources. A new ad needs at least one photo; OLX refuses it otherwise. These limits are checked before sending, like the 70-character title and the 4,096-character description, and a catalog's `limits` can change them:
 
 | Source | Use for |
 | --- | --- |
@@ -116,16 +117,46 @@ JPEG, PNG, WebP and GIF, up to 10 MB each. The SDK downloads each photo and uplo
 
 ## Ad status
 
-| `status` | Meaning |
-| --- | --- |
-| `active` | Live and visible to buyers. |
-| `pending_review` | OLX is reviewing it. Normal for a while after every edit, as with edits made by hand. |
-| `limited` | Created, but hidden: the account has used its free ads in that category. It goes live after you buy a package on OLX. The SDK never buys anything. |
-| `rejected` | OLX's review refused it. |
-| `expired`, `deleted` | No longer live. |
-| `unknown` | The status could not be read. |
+| `status` | Meaning | What you can do |
+| --- | --- | --- |
+| `active` | Live and visible to buyers. `promotion` says when it is boosted (`featured` or `elite`). | edit, deactivate, mark sold, delete |
+| `pending_review` | OLX is reviewing it. Normal for a while after every edit or republish, as with changes made by hand. | edit, delete |
+| `limited` | Created, but hidden: the account has used its free ads in that category. | activate (uses a free slot if one is left), edit, delete |
+| `inactive` | You took it offline (`deactivate`). | republish, delete |
+| `expired` | Its time on OLX ran out. | republish, edit, mark sold, delete |
+| `sold` | Marked as sold. | delete |
+| `rejected` | OLX's review refused it. `rejection` is `soft` (fix it and edit) or `hard`. | read the reason; edit if soft; delete |
+| `deleted` | Gone from OLX. | — |
+| `unknown` | The status could not be read. | delete |
 
-The status is read from My ads right after each write. It isn't refreshed later by itself; `olx.ads.status(adId)` reads it again, for example after you buy a package. It searches My ads (up to 50 pages of 20 by default) and returns `undefined` if the ad isn't there.
+The last column is what the OLX website itself offers in each state; `olx.ads.actions(ad)` returns it as a list, for building buttons in your own admin pages. `ad.state` keeps OLX's own, finer state name (for example `moderation_soft_reject`, `featured_pending`).
+
+The status is read from My ads right after each write. It isn't refreshed later by itself: `olx.ads.status(adId)` reads one again, and `olx.sync.refresh()` re-reads every linked ad in one pass (reads only, not paced) and stores the ones that changed, such as ads that expired or went live after review.
+
+## Ad lifecycle
+
+Besides create, edit and delete, an ad can be taken offline, brought back and closed, as on the website:
+
+```ts
+await olx.ads.deactivate(adId);                        // offline, not deleted → inactive
+await olx.ads.republish(adId, adInput);                // inactive or expired → back (usually pending_review)
+await olx.ads.markSold(adId, { soldOn: 'elsewhere' }); // or 'olx' → sold
+await olx.ads.activate(adId);                          // limited → 'activated' | 'needs_package' | 'not_limited'
+await olx.ads.rejectionReason(adId);                   // { message, messageAr, rules } or undefined
+```
+
+What we saw on live OLX: a deactivated ad shows `state: inactive` at once, but the website may still show it as `limited` for a while. `activate` doesn't bring a deactivated ad back (OLX answers `not_limited`); `republish` does, renewing its expiry. Deactivating an ad that is already offline is fine and does nothing.
+
+All of these except `rejectionReason` are writes: [paced](#pacing) and never retried. `activate` uses a free slot when the account still has one in that category. When it doesn't, it answers `needs_package`, and the SDK never buys one. `olx.account.postingLimitOffers(categoryId)` shows what OLX charges, read only.
+
+With **product sync**, the same steps keep the product's link and its stored status up to date:
+
+- `sync.deactivate(productId)` takes the ad offline, for example when the product is out of stock but coming back. The next `sync.upsert` brings it back with a republish (`action: 'republished'`), even if nothing changed. An `expired` ad is republished the same way.
+- `sync.remove(productId)` still deletes the ad, for products that are gone for good.
+- `sync.markSold(productId, 'olx' | 'elsewhere')` closes the ad. A sold ad can't be edited, so `upsert` then fails with `reconcile_required` (`reason: 'ad_sold'`). To sell the product again, `sync.forget(productId)` (no `force` needed, since a sold ad isn't live), and the next `upsert` posts a new ad.
+- `sync.activate(productId)` activates a `limited` ad and stores the result.
+
+**Views and leads.** `olx.ads.metrics(adIds)` returns, per ad: search views, page views, phone views, chat, WhatsApp and SMS leads, favorites, and `leads` (the sum of the contact actions). These are reads, so they're not paced; up to 50 ads go in one request.
 
 ## Categories, fields and locations
 

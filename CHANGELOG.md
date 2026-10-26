@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.4.0 — 2026-10-26
+
+The rest of a seller's ad lifecycle, insights, and OLX delivery orders.
+
+### Verified live (26 Oct 2026)
+
+- Deactivate: the backend `state` turns `inactive` at once, while the website may show `limited`. Deactivating again answers `ad_already_inactive`, which the SDK treats as done.
+- Republish of a deactivated ad brings it back and renews its expiry (to `limited` on an account with no free slot left).
+- Activate: `needs_package` for a limited ad with no free slot left, and `not_limited` for a deactivated one, which comes back with republish instead.
+- Mark as sold: `state` turns `sold` at once; the website's state follows within about 20 seconds.
+- Metrics, wallet, exchange rate and posting-limit offers read correctly. A new ad without a photo is refused by OLX, which is now checked before sending.
+
+### Added
+
+- `olx.ads`: `deactivate`, `activate` (a `limited` ad with a free slot: `activated`, `needs_package` or `not_limited`), `markSold({ soldOn: 'olx' | 'elsewhere' })`, `republish` (an inactive or expired ad), `rejectionReason`, `metrics` (views and leads per ad), and `actions(ad)` / `adActions()`: what the website offers for an ad in its status.
+- `OlxAd` has `state` (OLX's own state), `promotion` (`featured` / `elite`, and whether it's pending), `rejection` (`soft` / `hard`) and `expiresAt`.
+- `olx.sync`: `deactivate`, `activate`, `markSold`, and `refresh()`, which re-reads every linked ad's status from My ads in one pass. `upsert` on an inactive or expired ad republishes it (`action: 'republished'`).
+- `olx.account`: `profile`, `wallet`, `postingLimitOffers(categoryId)` (read only; the SDK never buys).
+- `olx.orders` (experimental): OLX delivery listings, the orders on an ad, and `update(orderId, 'accept' | 'reject' | 'cancel' | 'out_for_delivery' | 'delivered')`.
+- `olx.catalog`: `exchangeRate()` (USD → LBP) and `deliveryConfig()`, both public.
+- REST: `POST …/listing/deactivate`, `…/activate`, `…/sold`, `GET …/listing/metrics`, `POST /v1/listings/refresh`; job types `deactivate`, `activate`, `mark_sold`, `refresh`.
+- A new ad needs at least one photo, as OLX requires ("The images field is required"). It's checked before sending; a catalog's `limits.minImages: 0` turns the check off.
+
+### Changed (breaking)
+
+- `AdStatus` has two new values: `inactive` (deactivated) and `sold`. Generic status names like `deactivated` or `disabled` now read as `inactive`, where they read as `deleted` before.
+- OLX's states are read as OLX defines them: `featured` and `elite` are `active` with a `promotion`, and a soft rejection is `rejected` with `rejection: 'soft'`. The backend `state` decides `inactive` and `sold`, since OLX's display state lags behind and can show a deactivated ad as `limited`.
+- A sold product can't be edited: `upsert` fails with `reconcile_required` (`reason: 'ad_sold'`). `forget` it to post a new ad; `forget` no longer needs `force` for a sold or deleted ad.
+- An endpoints file (`OLX_ENDPOINTS_FILE`) now overrides only the entries it lists, so endpoints added in new versions keep working without editing it.
+
 ## 0.3.0 — 2026-10-26
 
 A library you install in a Node.js or Next.js app and call directly.

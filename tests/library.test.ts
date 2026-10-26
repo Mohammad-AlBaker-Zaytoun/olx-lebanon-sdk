@@ -362,3 +362,16 @@ describe('listingDefaults and the sync fingerprint', () => {
     expect(fp({ locationId: '47' })).not.toBe(base);
   });
 });
+
+describe('OLX needs a photo on a new ad', () => {
+  it('create without photos fails before anything is sent; an edit may leave images out', async () => {
+    const m = vi.fn(async () => jsonResponse({}));
+    const olx = createOlxClient({ accessToken: 'x'.repeat(40), fetch: m as unknown as typeof fetch });
+    const ad = { title: 'Laptop', description: 'New', price: 899, categoryId: '175', locationId: '47' };
+    await expect(olx.ads.create(ad)).rejects.toMatchObject({ code: 'invalid_listing', issues: ['OLX needs at least one photo'] });
+    await expect(olx.ads.create({ ...ad, images: [] })).rejects.toMatchObject({ code: 'invalid_listing' });
+    expect(m).not.toHaveBeenCalled();
+    // An edit without `images` keeps the ad's photos: the mapper doesn't ask for one.
+    expect(() => new CatalogMapper(parseCatalog({})).resolve(ad)).not.toThrow();
+  });
+});

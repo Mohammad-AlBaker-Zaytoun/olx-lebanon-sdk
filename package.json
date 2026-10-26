@@ -1,6 +1,6 @@
 {
   "name": "olx-lebanon-sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Post, edit and delete your own OLX Lebanon ads from Node.js and Next.js: typed client, product sync, catalog lookup, CLI and an optional REST service.",
   "license": "MIT",
   "author": "Mohammad AlBaker Zaytoun (https://www.zaytoun.dev/)",

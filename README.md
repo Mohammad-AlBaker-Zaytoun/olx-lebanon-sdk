@@ -34,6 +34,8 @@ console.log(ad.id, ad.status); // "117146151" "active"
 
 - **Typed client.** Create, edit, delete and list your ads, with TypeScript types and editor docs for everything.
 - **Product sync.** `sync.upsert(productId, ad)` keeps one ad per product: it posts once, edits in place, and skips unchanged products. Links live in your own database through a four-method store.
+- **The whole ad lifecycle.** Deactivate and bring back, republish expired ads, mark as sold, activate `limited` ads with a free slot, and read why an ad was rejected. `ads.actions(ad)` says what each status allows, as the website does.
+- **Insights.** Views and leads per ad (phone, chat, WhatsApp), your wallet, what OLX charges past the free limit, and its USD/LBP rate. OLX delivery orders too (experimental).
 - **No duplicate ads.** Writes are never retried. When OLX's answer is lost, the product is parked for you to check instead of being posted again.
 - **Human pace.** At least a minute between writes and at most 20 an hour by default, so the account behaves like a person.
 - **Catalog lookups.** Categories, each category's fields and choices, and all 662 locations (with Arabic names, offline), to find ids or build your own forms.
@@ -95,6 +97,7 @@ The same from code: `olx.catalog.findCategories('laptop')`, `olx.catalog.fields(
 | `olx-lb token` | Prints the access token for your app's environment variables |
 | `olx-lb check [--product file.json]` | Read-only check of the session, the account, your newest ads, and how a product maps |
 | `olx-lb catalog categories\|fields\|locations` | Category ids, a category's fields and choices, area ids. `--json` for scripts |
+| `olx-lb ads [list\|deactivate\|activate\|sold\|delete\|reason]` | Your ads with status, expiry, views and leads; change one ad's state |
 | `olx-lb test-post create\|edit\|delete` | Walks one test ad through posting, editing and deleting |
 | `olx-lb serve` | Runs the REST service |
 | `olx-lb capture [shapes]` | For maintainers: records the OLX website to follow a change ([guide](docs/ENDPOINT-CAPTURE.md)) |
@@ -110,7 +113,8 @@ npx olx-lb init && npx olx-lb login && npx olx-lb serve    # http://127.0.0.1:87
 ```bash
 curl -X PUT http://127.0.0.1:8787/v1/products/SKU-1042/listing \
   -H "X-Api-Key: $OLX_SDK_API_KEY" -H "Content-Type: application/json" \
-  -d '{"title":"Dell Latitude 5440","description":"16 GB RAM","price":899,"categoryId":"175","locationId":"47","attributes":{"make":"3","type":"1","new_used":"1"}}'
+  -d '{"title":"Dell Latitude 5440","description":"16 GB RAM","price":899,"categoryId":"175","locationId":"47",
+       "attributes":{"make":"3","type":"1","new_used":"1"},"images":[{"url":"https://shop.example.com/dell-5440.jpg"}]}'
 # 202 {"jobId":"6f0c…","status":"queued"}
 ```
 

@@ -6,6 +6,8 @@ Everything below is exported from `olx-lebanon-sdk` unless marked otherwise. All
 - [`olx.ads`](#olxads)
 - [`olx.sync`](#olxsync)
 - [`olx.catalog` / `OlxCatalog`](#olxcatalog--olxcatalog)
+- [`olx.account`](#olxaccount)
+- [`olx.orders`](#olxorders)
 - [Types](#types)
 - [Stores](#stores)
 - [Errors](#errors)
@@ -31,6 +33,8 @@ The client:
 | `ads` | [`AdsApi`](#olxads): your ads by OLX id |
 | `sync` | [`SyncService`](#olxsync): one ad per product |
 | `catalog` | [`OlxCatalog`](#olxcatalog--olxcatalog): categories, fields, locations |
+| `account` | [`AccountApi`](#olxaccount): profile, wallet, package offers (read only) |
+| `orders` | [`OrdersApi`](#olxorders): OLX delivery orders (experimental) |
 | `syncStore` | The `SyncStore` passed as `store` |
 | `session` | `SessionManager`: `status()` → `{ loggedIn, savedAt?, cookieCount, capturedHeaders }`, `clear()` |
 | `limiter` | `WriteRateLimiter`: `recentCount` (writes in the last hour) |
@@ -48,8 +52,15 @@ Your ads by their OLX id. Nothing is stored on your side.
 | `list({ page?, perPage? })` | `Promise<{ ads: OlxAd[]; hasMore: boolean }>` | One page of My ads, newest first. `perPage` 1–50, default 20. |
 | `find(adId, { maxPages? })` | `Promise<OlxAd \| undefined>` | Looks for one of your ads in My ads (up to 50 pages by default). |
 | `status(adId, { maxPages? })` | `Promise<AdStatus \| undefined>` | Reads an ad's current status from My ads (up to 50 pages by default); `undefined` if it isn't there. |
+| `deactivate(adId)` | `Promise<void>` | Takes the ad offline without deleting it (status `inactive`). |
+| `republish(adId, ad: AdInput)` | `Promise<OlxAd>` | Brings back an `inactive` or `expired` ad with this content (the whole ad, as for `update`; without `images` the photos stay). |
+| `markSold(adId, { soldOn })` | `Promise<void>` | Marks the ad as sold, `soldOn: 'olx'` or `'elsewhere'`. After that it can only be deleted. |
+| `activate(adId)` | `Promise<ActivateResult>` | Puts a `limited` ad live with a free slot: `'activated'`, `'needs_package'` or `'not_limited'`. |
+| `rejectionReason(adId)` | `Promise<RejectionReason \| undefined>` | Why OLX's review refused the ad: `{ message, messageAr?, rules }`, or `undefined` if there is none on file. |
+| `metrics(adIds)` | `Promise<Record<string, AdMetrics>>` | Views and leads per ad id; ads OLX has no numbers for yet are left out. |
+| `actions(ad)` | `AdAction[]` | What can be done with an ad in its status (also exported as `adActions`). See [Ad status](concepts.md#ad-status). |
 
-`create`, `update` and `delete` are writes: [paced](concepts.md#pacing) and never retried.
+`create`, `update`, `delete`, `deactivate`, `republish`, `markSold` and `activate` are writes: [paced](concepts.md#pacing) and never retried. The others are reads.
 
 ## `olx.sync`
 
@@ -61,11 +72,17 @@ One ad per product of yours. See [Concepts: product sync](concepts.md#product-sy
 | `remove(productId)` | `Promise<RemoveResult>` | Deletes the ad and the link. |
 | `link(productId, adId, { replace? })` | `Promise<SyncRecord>` | Resolves a parked product whose ad exists, or adopts an ad posted another way. The next `upsert` pushes the current content to it. |
 | `forget(productId, { force? })` | `Promise<boolean>` | Drops the link; the next `upsert` creates a new ad. Resolves `true` if there was a link. |
+| `deactivate(productId)` | `Promise<SyncRecord>` | Takes the product's ad offline; the next `upsert` republishes it. |
+| `activate(productId)` | `Promise<{ result: ActivateResult; record: SyncRecord }>` | Activates the product's `limited` ad. |
+| `markSold(productId, soldOn)` | `Promise<SyncRecord>` | Marks the product's ad as sold. `upsert` then fails with `reason: 'ad_sold'` until you `forget` the link. |
+| `refresh({ maxPages? })` | `Promise<RefreshResult>` | Re-reads every linked ad's status from My ads and stores the changes: `{ updated, missing, checked }`. Reads only. |
 | `isBusy(productId)` | `boolean` | Whether a create for the product is running in this process. |
+
+`upsert` on an `inactive` or `expired` ad republishes it (`action: 'republished'`), even when the content is unchanged. On a `sold` ad it throws `reconcile_required`. See [Ad lifecycle](concepts.md#ad-lifecycle).
 
 ```ts
 type UpsertResult =
-  | { action: 'created' | 'updated'; record: SyncRecord; ad: OlxAd }
+  | { action: 'created' | 'updated' | 'republished'; record: SyncRecord; ad: OlxAd }
   | { action: 'unchanged'; record: SyncRecord };
 
 type RemoveResult = { action: 'deleted'; adId: string; alreadyGone?: boolean } | { action: 'not_found' };
@@ -86,8 +103,30 @@ OLX's public catalog. No token needed: `new OlxCatalog()` works on its own.
 | `locations(text?, { includeDistricts? })` | `Location[]` | Locations whose path or Arabic name matches. Areas only, unless `includeDistricts: true`. No network. |
 | `location(id)` | `Location \| undefined` | One location. |
 | `locationsTakenAt` | `string` | Date of the shipped location snapshot. |
+| `exchangeRate()` | `Promise<{ base: 'USD'; lbp: number }>` | OLX's current USD → LBP rate. |
+| `deliveryConfig()` | `Promise<DeliveryConfig>` | OLX delivery's limits: `maxPrice` (USD), `maxWeightKg`, `minDaysToShip`, `maxDaysToShip`. |
 
 `new OlxCatalog({ fetch?, apiBase?, timeoutMs? })`.
+
+## `olx.account`
+
+Your account, read only: the SDK never buys or spends.
+
+| Method | Returns | |
+| --- | --- | --- |
+| `profile()` | `Promise<AccountInfo>` | `{ externalId, name?, phone? }` of the signed-in account. |
+| `wallet()` | `Promise<Wallet>` | `{ balance, nextExpiry? }`: prepaid credit in USD, and the amount that expires first. |
+| `postingLimitOffers(categoryId)` | `Promise<PackageOffer[]>` | What OLX charges to post past the free limit in a category: `{ id, type, title?, name?, price, discountPrice?, items, benefits }`, prices in USD. |
+
+## `olx.orders`
+
+OLX delivery orders on your listings: buyers order through OLX, and you accept and ship. **Experimental:** mapped from the OLX website's code and not yet checked against real orders; fields beyond `id` and `status` are in `raw`.
+
+| Method | Returns | |
+| --- | --- | --- |
+| `listings(status?)` | `Promise<SellingListing[]>` | Your listings with delivery orders, `'active'` (default) or `'archived'`: `{ id, title?, offers?, raw }`. |
+| `forAd(adId, status?)` | `Promise<DeliveryOrder[]>` | The orders on one ad: `{ id, status?, raw }`. |
+| `update(orderId, action)` | `Promise<void>` | `'accept'`, `'reject'`, `'cancel'`, `'out_for_delivery'` or `'delivered'`. A paced write. |
 
 ## Types
 
@@ -119,10 +158,25 @@ interface OlxAd {
   status: AdStatus;
   url?: string;
   title?: string;
+  state?: string;          // OLX's own state, e.g. 'featured', 'moderation_soft_reject', 'disabled'
+  promotion?: { type: 'featured' | 'elite'; pending: boolean };
+  rejection?: 'soft' | 'hard';
+  expiresAt?: string;      // ISO 8601
   raw: unknown; // OLX's own answer; may hold personal data, don't pass it to clients
 }
 
-type AdStatus = 'active' | 'pending_review' | 'limited' | 'rejected' | 'expired' | 'deleted' | 'unknown';
+type AdStatus =
+  | 'active' | 'pending_review' | 'limited' | 'rejected' | 'expired'
+  | 'inactive' | 'sold' | 'deleted' | 'unknown';
+
+type AdAction = 'edit' | 'deactivate' | 'activate' | 'mark_sold' | 'republish' | 'delete' | 'rejection_reason';
+
+interface AdMetrics {
+  searchViews: number; views: number; storyViews: number; reelViews: number;
+  phoneViews: number; chatLeads: number; whatsAppLeads: number; smsLeads: number; applyLeads: number;
+  favorites: number;
+  leads: number;           // phoneViews + chatLeads + whatsAppLeads + smsLeads + applyLeads
+}
 ```
 
 ### `SyncRecord`

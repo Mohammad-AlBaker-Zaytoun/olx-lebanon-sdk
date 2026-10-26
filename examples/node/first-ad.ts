@@ -1,7 +1,7 @@
 /**
  * Find the ids for an ad, post it, change its price, then delete it.
  *
- *   OLX_ACCESS_TOKEN=… npx tsx examples/node/first-ad.ts [photo.jpg]
+ *   OLX_ACCESS_TOKEN=… npx tsx examples/node/first-ad.ts photo.jpg
  *
  * This posts a real ad on your own account, then removes it. Writes are paced like a person
  * (at least a minute apart), so the whole run takes about two minutes.
@@ -11,6 +11,9 @@ import { createOlxClient, toErrorInfo, type AdInput } from 'olx-lebanon-sdk';
 
 const accessToken = process.env.OLX_ACCESS_TOKEN;
 if (!accessToken) throw new Error('Set OLX_ACCESS_TOKEN first (`npx olx-lb login`, then `npx olx-lb token`)');
+
+const photo = process.argv[2];
+if (!photo) throw new Error('Give a photo: OLX needs at least one (npx tsx examples/node/first-ad.ts photo.jpg)');
 
 const olx = createOlxClient({ accessToken });
 
@@ -39,7 +42,7 @@ const ad: AdInput = {
   locationId: location.id, // "47", Beirut > Hamra
   attributes: { make: '3', type: '1', new_used: '1' }, // Dell, Laptop, New: values from `fields` above
   // A local file here; `{ url }` (public https) and `{ data, filename }` (bytes) work too.
-  images: process.argv[2] ? [{ path: resolve(process.argv[2]) }] : [],
+  images: [{ path: resolve(photo) }],
 };
 
 try {

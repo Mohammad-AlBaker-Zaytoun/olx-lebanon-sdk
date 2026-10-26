@@ -140,7 +140,7 @@ describe('guards: rate limiter', () => {
         createAd: { method: 'POST', path: '/api/ads' },
         updateAd: { method: 'PUT', path: '/api/ads/{id}' },
       }),
-      catalog,
+      catalog: { ...catalog, limits: { ...catalog.limits, minImages: 0 } }, // a photo-less product
       sessionStore: new MemorySessionStore(session),
       syncStore: new MemorySyncStore(),
       writeLimits: { minIntervalMs: 0, jitterMs: 0, maxPerHour: 100 },

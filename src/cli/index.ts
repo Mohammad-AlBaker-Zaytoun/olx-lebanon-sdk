@@ -23,12 +23,13 @@ const COMMANDS: Record<string, () => Promise<Command>> = {
   token: async () => (await import('./commands/login.js')).token,
   catalog: async () => (await import('./commands/catalog.js')).catalog,
   check: async () => (await import('./commands/check.js')).check,
+  ads: async () => (await import('./commands/ads.js')).ads,
   'test-post': async () => (await import('./commands/testPost.js')).testPost,
   serve: async () => (await import('./commands/serve.js')).serve,
   capture: async () => (await import('./commands/capture.js')).capture,
 };
 
-const ORDER = ['init', 'login', 'token', 'catalog', 'check', 'test-post', 'serve', 'capture'];
+const ORDER = ['init', 'login', 'token', 'catalog', 'check', 'ads', 'test-post', 'serve', 'capture'];
 
 async function help(ctx: CliContext, name?: string): Promise<void> {
   if (name && COMMANDS[name]) {

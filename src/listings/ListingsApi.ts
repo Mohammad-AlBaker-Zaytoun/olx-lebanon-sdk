@@ -1,4 +1,4 @@
-import { ImageUploadError, OlxSdkError, UncertainWriteError } from '../errors.js';
+import { ImageUploadError, OlxHttpError, OlxSdkError, UncertainWriteError } from '../errors.js';
 import type { OlxHttpClient } from '../http/HttpClient.js';
 import type { Logger } from '../logger.js';
 import type { SessionProvider } from '../session/SessionManager.js';
@@ -74,6 +74,14 @@ export interface ListingsApiDeps {
 const LOOKUP_PAGES = 3;
 const LOOKUP_PAGE_SIZE = 20; // the web app's own page size
 const LOOKUP_TIMEOUT_MS = 10_000;
+/** OLX's machine-readable message in an error answer, e.g. `ad_already_inactive`. */
+function olxMessage(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const o = body as Record<string, unknown>;
+  const m = o.messageCode ?? o.message_code ?? o.message;
+  return typeof m === 'string' ? m : undefined;
+}
+
 /** Ads per analytics request. */
 const METRICS_BATCH = 50;
 /** Pages of "My ads" searched for an ad's current photos before an edit that replaces them. */
@@ -124,6 +132,7 @@ export class ListingsApi implements ListingsPort {
   async create(input: ListingInput, hooks: CreateHooks = {}): Promise<OlxAd> {
     // Map first so a bad product fails before anything is sent.
     const mapped = this.d.mapper.resolve(input);
+    this.d.mapper.assertPhotosForCreate(input);
     // Account details too: a missing session fails here, before any photo is uploaded.
     const ctx = await this.context('create');
     // Take the write slot before uploading, so images aren't uploaded long before the ad that uses them.
@@ -239,9 +248,15 @@ export class ListingsApi implements ListingsPort {
     await this.d.http.call('deleteAd', { params: { id: adId } });
   }
 
-  /** Takes the ad offline without deleting it (OLX state `disabled`). */
+  /** Takes the ad offline without deleting it. An ad that is already offline is fine. */
   async deactivate(adId: string): Promise<void> {
-    await this.d.http.call('deactivateAd', { params: { id: adId } });
+    try {
+      await this.d.http.call('deactivateAd', { params: { id: adId } });
+    } catch (err) {
+      // OLX answers 400 "ad_already_inactive" for an ad that is already offline: the goal is met.
+      if (err instanceof OlxHttpError && err.status === 400 && olxMessage(err.body) === 'ad_already_inactive') return;
+      throw err;
+    }
   }
 
   /**

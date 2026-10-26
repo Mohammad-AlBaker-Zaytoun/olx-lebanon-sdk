@@ -9,6 +9,7 @@ For store backends that aren't written in JavaScript (PHP, Python, .NET, Java, G
 - [Jobs](#jobs)
 - [Errors](#errors)
 - [Parked products](#parked-products)
+- [Ad lifecycle](#ad-lifecycle)
 - [Webhooks](#webhooks)
 - [OpenAPI and generated clients](#openapi-and-generated-clients)
 - [Running it as a service](#running-it-as-a-service)
@@ -66,7 +67,12 @@ All paths are under `/v1`. Every route except `/v1/health` and `/v1/openapi.json
 | `PUT` | `/v1/products/{productId}/listing` | Create or update the product's ad → `202 { jobId, status }`. `?force=true` pushes unchanged content too |
 | `DELETE` | `/v1/products/{productId}/listing` | Remove the product's ad → `202 { jobId, status }` |
 | `GET` | `/v1/products/{productId}/listing` | The stored link: ad id, status, sync state |
+| `POST` | `/v1/products/{productId}/listing/deactivate` | Take the ad offline without deleting it → `202 { jobId }`. The next `PUT` republishes it |
+| `POST` | `/v1/products/{productId}/listing/activate` | Put a `limited` ad live with a free slot → `202 { jobId }`; the job result has `result`: `activated`, `needs_package` or `not_limited` |
+| `POST` | `/v1/products/{productId}/listing/sold` | Mark the ad as sold, body `{ "soldOn": "olx" }` or `{ "soldOn": "elsewhere" }` → `202 { jobId }` |
+| `GET` | `/v1/products/{productId}/listing/metrics` | Views and leads for the product's ad |
 | `POST` | `/v1/products/{productId}/listing/resolve` | Resolve a [parked product](#parked-products) |
+| `POST` | `/v1/listings/refresh` | Re-read every linked ad's status from OLX (expired, live after review…) → `202 { jobId }` |
 | `GET` | `/v1/listings` | All stored links |
 | `GET` | `/v1/jobs/{jobId}` | A job and its outcome |
 
@@ -134,7 +140,7 @@ Ids may be strings or numbers. To keep the queue small in memory, a request is r
 | `status` | |
 | --- | --- |
 | `queued`, `running` | Not finished. Poll again in a few seconds. |
-| `succeeded` | `result.action` is `created`, `updated` or `unchanged` (upsert), or `deleted` / `not_found` (remove). |
+| `succeeded` | Upsert: `result.action` is `created`, `updated`, `republished` (an inactive or expired ad brought back) or `unchanged`. Remove: `deleted` / `not_found`. Deactivate and sold: `result.record`. Activate: `result.result` and `result.record`. Refresh: `result.updated`, `result.missing`, `result.checked`. |
 | `failed` | `error` has a stable `code`; see [Errors](errors.md#codes). |
 | `cancelled` | The service stopped before the job ran. Send the request again. |
 
@@ -185,6 +191,20 @@ X-Api-Key: …
 | `{ "action": "forget" }` | No ad exists: the next sync creates one. |
 
 Both refuse with `409` when they would leave an ad orphaned or shared: `link_conflict` (the product has a healthy link to another ad, or the ad belongs to another product) and `healthy_link` (forgetting a healthy link would leave its ad live and unmanaged). Add `"replace": true` or `"force": true` only if that is what you want. To take an ad down, use `DELETE`.
+
+## Ad lifecycle
+
+The usual flow for a shop:
+
+| When | Call |
+| --- | --- |
+| A product is added or changes | `PUT /v1/products/{id}/listing` |
+| It's out of stock, coming back | `POST …/deactivate`. A later `PUT` brings the same ad back |
+| It's gone for good | `DELETE /v1/products/{id}/listing` |
+| It sold | `POST …/sold` with `{ "soldOn": "olx" }` or `"elsewhere"`. To sell it again, `POST …/resolve { "action": "forget" }`, then `PUT` posts a new ad |
+| Once a day, say | `POST /v1/listings/refresh`, so expired ads are noticed and come back with the next `PUT` |
+
+Deactivate, activate and sold are queued and paced like any write. Their jobs fail with the same [codes](errors.md#codes); for example, sold on a product that has no ad gives `sdk_error`, and a `PUT` on a sold ad gives `reconcile_required` with `details.reason: "ad_sold"`. See [Concepts: ad lifecycle](concepts.md#ad-lifecycle).
 
 ## Webhooks
 

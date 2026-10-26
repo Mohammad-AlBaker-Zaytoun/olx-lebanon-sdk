@@ -37,13 +37,15 @@ const LocationSchema = z.object({
 });
 
 /** OLX Lebanon's posting form limits, checked before anything is sent. */
-export const OLX_LB_LIMITS = { titleMaxLength: 70, descriptionMaxLength: 4096, maxImages: 20 } as const;
+export const OLX_LB_LIMITS = { titleMaxLength: 70, descriptionMaxLength: 4096, minImages: 1, maxImages: 20 } as const;
 
 export const CatalogSchema = z.object({
   limits: z
     .object({
       titleMaxLength: z.number().int().positive().optional(),
       descriptionMaxLength: z.number().int().positive().optional(),
+      /** OLX refuses an ad without a photo ("The images field is required"); 0 turns the check off. */
+      minImages: z.number().int().nonnegative().optional(),
       maxImages: z.number().int().positive().optional(),
     })
     .default({}),
@@ -103,6 +105,8 @@ function broadLocation(id: string): string | undefined {
   return `locationId ${id} is ${row[4] === 0 ? 'the whole country' : `the district "${row[2]}"`}; OLX needs an area in it${hint}`;
 }
 
+const photosNeeded = (n: number) => (n === 1 ? 'OLX needs at least one photo' : `OLX needs at least ${n} photos`);
+
 export function parseCatalog(raw: unknown): Catalog {
   const parsed = CatalogSchema.safeParse(raw);
   if (!parsed.success) {
@@ -124,6 +128,17 @@ export function loadCatalog(file: string): Catalog {
  */
 export class CatalogMapper {
   constructor(readonly catalog: Catalog) {}
+
+  /**
+   * Throws if a NEW ad has fewer photos than OLX requires (an edit may leave `images` out to
+   * keep the ad's photos, so `resolve` can't tell on its own).
+   */
+  assertPhotosForCreate(input: ListingInput): void {
+    const min = this.catalog.limits.minImages ?? OLX_LB_LIMITS.minImages;
+    if (min && (input.images?.length ?? 0) < min) {
+      throw new MappingError(`Cannot map listing "${input.title}": ${photosNeeded(min)}`, [photosNeeded(min)]);
+    }
+  }
 
   resolve(input: ListingInput): MappedListing {
     const issues: string[] = [];
@@ -175,7 +190,7 @@ export class CatalogMapper {
     }
 
     // OLX's own limits apply unless the catalog sets its own.
-    const { titleMaxLength, descriptionMaxLength, maxImages } = { ...OLX_LB_LIMITS, ...this.catalog.limits };
+    const { titleMaxLength, descriptionMaxLength, minImages, maxImages } = { ...OLX_LB_LIMITS, ...this.catalog.limits };
     const title = input.title.trim();
     const body = input.description.trim();
     if (!title) issues.push('Title is empty');
@@ -189,6 +204,10 @@ export class CatalogMapper {
       issues.push(
         `Description is ${description.length} characters${description === body ? '' : ' with the footer'}; OLX allows ${descriptionMaxLength}`,
       );
+    }
+    // Leaving `images` out of an edit keeps the ad's photos; new ads are checked in create.
+    if (minImages && input.images !== undefined && input.images.length < minImages) {
+      issues.push(photosNeeded(minImages));
     }
     if (maxImages && (input.images?.length ?? 0) > maxImages) {
       issues.push(`${input.images?.length} images given; OLX allows ${maxImages}`);

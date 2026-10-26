@@ -121,7 +121,14 @@ function mockOlx(opts: { myAds?: Array<Record<string, unknown>>; answers?: Recor
 
 function client(o: Parameters<typeof mockOlx>[0] = {}, store = new MemorySyncStore()) {
   const m = mockOlx(o);
-  const olx = createOlxClient({ accessToken: TOKEN, fetch: m.fetch, store, writeLimits: { minIntervalMs: 0, jitterMs: 0 } });
+  // Photo-less test listings: the catalog turns OLX's one-photo minimum off (as a catalog can).
+  const olx = createOlxClient({
+    accessToken: TOKEN,
+    fetch: m.fetch,
+    store,
+    catalog: { limits: { minImages: 0 } },
+    writeLimits: { minIntervalMs: 0, jitterMs: 0 },
+  });
   return { olx, store, ...m };
 }
 
@@ -394,5 +401,33 @@ describe('an endpoints file only overrides what it lists', () => {
     expect(status.deactivateAd).toBe(true);
     expect(status.deleteAd).toBe(true);
     expect(status.adMetrics).toBe(false);
+  });
+});
+
+describe("OLX's two states", () => {
+  it('inactive and sold come from the backend state, which changes first', async () => {
+    const { olx } = client({
+      myAds: [
+        { externalID: AD, virtualState: 'limited', state: 'inactive' }, // just deactivated: the website shows "limited"
+        { externalID: '117000002', virtualState: 'limited', state: 'sold' }, // just sold: virtualState lags
+        { externalID: '117000003', virtualState: 'featured', state: 'active' },
+      ],
+    });
+    expect(await olx.ads.find(AD)).toMatchObject({ status: 'inactive', state: 'limited' });
+    expect((await olx.ads.find('117000002'))?.status).toBe('sold');
+    expect(await olx.ads.find('117000003')).toMatchObject({ status: 'active', promotion: { type: 'featured' } });
+  });
+});
+
+describe('deactivate is safe to repeat', () => {
+  it('an "ad_already_inactive" answer counts as done; other 400s still fail', async () => {
+    const already = client({
+      answers: { [`POST /ads/${AD}/deactivate`]: () => jsonResponse({ message: 'ad_already_inactive' }, 400) },
+    });
+    await expect(already.olx.ads.deactivate(AD)).resolves.toBeUndefined();
+    const other = client({
+      answers: { [`POST /ads/${AD}/deactivate`]: () => jsonResponse({ message: 'ad_not_found_for_user' }, 400) },
+    });
+    await expect(other.olx.ads.deactivate(AD)).rejects.toMatchObject({ code: 'olx_rejected', status: 400 });
   });
 });
