@@ -96,6 +96,8 @@ function toAd(o: Rec, raw: unknown): OlxAd {
 export function createOlxLebanonAdapter(opts: OlxLebanonAdapterOptions = {}): OlxAdapter {
   return {
     requiredEndpoints: ['createAd', 'updateAd', 'deleteAd', 'listMyAds', 'signImageUpload', 'currentUser'],
+    // Verified live: an edit with `images: []` and `order_photos: []` keeps the ad's photos.
+    keepsPhotosWhenNoneSent: true,
 
     // Sent only where the session is sent: the OLX domain and endpoints flagged
     // `sendSessionToForeignHost` (the Dubizzle ad API).
@@ -130,8 +132,8 @@ export function createOlxLebanonAdapter(opts: OlxLebanonAdapterOptions = {}): Ol
       }));
 
       if (ctx.mode === 'update') {
-        // Photos already on the ad are listed in `order_photos` as "img_<photo id>"; new
-        // uploads go in `images`. The SDK re-uploads the product's photos on every edit.
+        // New uploads go in `images`. Photos already on the ad stay: `order_photos`
+        // ("img_<photo id>") only reorders them; leaving one out does not remove it.
         return {
           extra_fields: extra,
           contact_person,

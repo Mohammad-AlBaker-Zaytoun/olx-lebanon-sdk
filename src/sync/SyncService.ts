@@ -55,6 +55,11 @@ export function hashListing(input: ListingInput, mapped?: MappedListing): string
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
+/** Fingerprint of a product's photo list (order matters). */
+export function hashImages(images: ImageSource[] | undefined): string {
+  return createHash('sha256').update(JSON.stringify((images ?? []).map(imageKey))).digest('hex');
+}
+
 const isGone = (err: unknown): boolean =>
   err instanceof OlxHttpError && (err.status === 404 || err.status === 410);
 
@@ -171,7 +176,9 @@ export class SyncService {
 
     let ad: OlxAd;
     try {
-      ad = await this.d.listings.update(existing.adId, input);
+      ad = await this.d.listings.update(existing.adId, input, {
+        photosUnchanged: existing.imagesHash !== undefined && existing.imagesHash === hashImages(input.images),
+      });
     } catch (err) {
       if (isGone(err)) {
         await this.d.store.set({
@@ -190,6 +197,7 @@ export class SyncService {
       adUrl: ad.url ?? existing.adUrl,
       status: ad.status === 'unknown' ? existing.status : ad.status,
       contentHash,
+      imagesHash: hashImages(input.images),
       lastSyncedAt: this.now().toISOString(),
       lastError: undefined,
     };
@@ -256,6 +264,7 @@ export class SyncService {
       adUrl: ad.url,
       status: ad.status,
       contentHash,
+      imagesHash: hashImages(input.images),
       createdAt: ts,
       lastSyncedAt: this.now().toISOString(),
     };

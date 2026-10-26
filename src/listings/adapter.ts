@@ -58,6 +58,12 @@ export interface OlxAdapter {
   signedUpload?: SignedUploadFlow;
   /** Reads the account from the `currentUser` response; set if the body needs account data. */
   parseAccount?(raw: unknown): AccountInfo;
+  /**
+   * True when an edit sent with no photos leaves the ad's existing photos as they are. The
+   * SDK then skips re-uploading photos that haven't changed. Leave unset if an empty photo
+   * list would remove them.
+   */
+  keepsPhotosWhenNoneSent?: boolean;
   /** Endpoints this adapter needs; the service warns at start-up about any that are missing. */
   requiredEndpoints?: EndpointName[];
   /**

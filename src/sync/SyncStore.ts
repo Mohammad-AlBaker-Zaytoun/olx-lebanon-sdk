@@ -20,6 +20,8 @@ export interface SyncRecord {
   syncState?: SyncState;
   /** Hash of the last listing content pushed to OLX; unchanged content is never re-sent. */
   contentHash: string;
+  /** Hash of the product's photo list at the last push; unchanged photos aren't re-uploaded. */
+  imagesHash?: string;
   createdAt: string;
   lastSyncedAt: string;
   lastError?: string;

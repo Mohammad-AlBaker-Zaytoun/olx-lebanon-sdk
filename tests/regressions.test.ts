@@ -256,7 +256,7 @@ describe('SyncService duplicate protection', () => {
     await sync.link('P1', 'ad-found');
     const after = await sync.upsert('P1', product);
     expect(after.action).toBe('updated'); // pushes current content to the linked ad
-    expect(l.update).toHaveBeenCalledWith('ad-found', product);
+    expect(l.update).toHaveBeenCalledWith('ad-found', product, { photosUnchanged: false }); // linked ad: photos unknown
   });
 
   it('refuses unsafe ad ids and will not silently replace a healthy link', async () => {

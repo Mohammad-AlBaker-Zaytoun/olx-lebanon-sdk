@@ -16,9 +16,17 @@ export interface CreateHooks {
   beforeSend?: () => Promise<void>;
 }
 
+export interface UpdateOptions {
+  /**
+   * The product's photos are the same as at the last sync. If the adapter keeps existing
+   * photos when none are sent, they aren't uploaded again (so they don't pile up on OLX).
+   */
+  photosUnchanged?: boolean;
+}
+
 export interface ListingsPort {
   create(input: ListingInput, hooks?: CreateHooks): Promise<OlxAd>;
-  update(adId: string, input: ListingInput): Promise<OlxAd>;
+  update(adId: string, input: ListingInput, opts?: UpdateOptions): Promise<OlxAd>;
   delete(adId: string): Promise<void>;
   /**
    * Optional, best effort: the ad's current state, for writes whose response had none.
@@ -115,11 +123,12 @@ export class ListingsApi implements ListingsPort {
     return ad;
   }
 
-  async update(adId: string, input: ListingInput): Promise<OlxAd> {
+  async update(adId: string, input: ListingInput, opts: UpdateOptions = {}): Promise<OlxAd> {
     const mapped = this.d.mapper.resolve(input);
     const ctx = await this.context('update');
     const refund = await this.d.http.acquireWriteSlot();
-    const images = await this.uploadImages(input, refund, ctx);
+    const keepPhotos = opts.photosUnchanged === true && this.d.adapter.keepsPhotosWhenNoneSent === true;
+    const images = keepPhotos ? [] : await this.uploadImages(input, refund, ctx);
     const raw = await this.d.http.call('updateAd', {
       params: { id: adId },
       json: this.payload(mapped, images, ctx),

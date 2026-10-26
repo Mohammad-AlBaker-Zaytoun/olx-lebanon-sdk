@@ -40,7 +40,7 @@ export {
 } from './listings/olxLebanon.js';
 export { imageSize, type ImageSize } from './listings/imageSize.js';
 export { ImageUploader, isPrivateAddress, type ImageUploaderOptions } from './listings/images.js';
-export { ListingsApi, type CreateHooks, type ListingsPort } from './listings/ListingsApi.js';
+export { ListingsApi, type CreateHooks, type ListingsPort, type UpdateOptions } from './listings/ListingsApi.js';
 export * from './listings/types.js';
 export {
   FileRequestLog,
@@ -90,6 +90,7 @@ export {
 } from './session/storage.js';
 export {
   SyncService,
+  hashImages,
   hashListing,
   type RemoveResult,
   type UpsertOptions,

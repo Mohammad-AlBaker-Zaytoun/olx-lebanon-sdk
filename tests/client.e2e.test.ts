@@ -52,6 +52,13 @@ function makeClient(sessionData = session) {
 }
 
 describe('OlxClient end to end (mocked OLX)', () => {
+  it('an adapter that does not keep photos gets them re-uploaded on every edit', async () => {
+    const { client, transport } = makeClient();
+    await client.sync.upsert('P-1', product);
+    await client.sync.upsert('P-1', { ...product, price: 599 }); // same photos
+    expect(transport.mock.calls.filter(([url]) => url.startsWith('https://img.olx.com.lb'))).toHaveLength(2);
+  });
+
   it('uploads images, creates the ad, then edits it in place', async () => {
     const { client, transport } = makeClient();
 

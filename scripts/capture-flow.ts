@@ -13,6 +13,7 @@ import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { chromium } from 'playwright';
 import { loadConfig } from '../src/config.js';
+import { FileSessionStore } from '../src/session/storage.js';
 import { formatHarSummary, formatHostActivity, summarizeHar, tallyHosts, type HarLike } from '../src/tools/har.js';
 
 const config = loadConfig();
@@ -27,10 +28,31 @@ const harPath = join('captures', `olx-flow-${stamp}.har`);
 await mkdir('captures', { recursive: true, mode: 0o700 });
 await chmod('captures', 0o700).catch(() => {}); // no-op on Windows
 
+// Start signed in when a session was saved by `npm run login` (OLX cookies and storage only).
+const saved = await new FileSessionStore(config.sessionFile).load().catch(() => null);
+const storageState = saved
+  ? {
+      cookies: saved.cookies.map((c) => ({
+        ...c,
+        httpOnly: c.httpOnly ?? false,
+        secure: c.secure ?? false,
+        sameSite: (['Strict', 'Lax', 'None'].find((v) => v.toLowerCase() === (c.sameSite ?? '').toLowerCase()) ?? 'Lax') as
+          | 'Strict'
+          | 'Lax'
+          | 'None',
+      })),
+      origins: Object.entries(saved.localStorage ?? {}).map(([origin, kv]) => ({
+        origin,
+        localStorage: Object.entries(kv).map(([name, value]) => ({ name, value })),
+      })),
+    }
+  : undefined;
+
 const browser = await chromium.launch({ headless: false });
 const context = await browser.newContext({
   locale: 'en-US',
   recordHar: { path: harPath, content: 'embed', urlFilter: hostPattern },
+  ...(storageState ? { storageState } : {}),
 });
 // Hostname + method of every request, so a call sent to an unrecorded host is still visible.
 const seen: Array<{ method: string; url: string }> = [];
@@ -41,7 +63,7 @@ await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded' });
 console.log(`Recording requests to: ${domains.join(', ')}`);
 console.log('If the summary is missing a call (e.g. image upload to another host), add that host to');
 console.log('OLX_EXTRA_HOSTS and capture again. In the browser window:');
-console.log('  1. Log in to your account');
+console.log(saved ? '  1. You should already be signed in (saved session); log in if not' : '  1. Log in to your account');
 console.log('  2. Post one real ad by hand (with at least one photo)');
 console.log('  3. Optionally edit it, then delete it');
 const rl = createInterface({ input: stdin, output: stdout });

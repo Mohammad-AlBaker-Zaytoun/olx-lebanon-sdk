@@ -510,6 +510,22 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/api/v1/user'))).toHaveLength(1); // account read once
   });
 
+  it('an edit with the same photos uploads nothing (OLX keeps them); changed photos are uploaded', async () => {
+    const { client, calls } = setup();
+    await client.sync.upsert('P-1', product);
+    const uploadsAfterCreate = calls.filter((c) => c.method === 'PUT').length;
+
+    await client.sync.upsert('P-1', { ...product, price: 99 }); // same photos
+    expect(calls.filter((c) => c.method === 'PUT').length).toBe(uploadsAfterCreate);
+    expect(calls.filter((c) => c.url.includes('get-signed-url')).length).toBe(uploadsAfterCreate);
+    const edit = JSON.parse(String(calls.filter((c) => c.method === 'PATCH').at(-1)!.body)) as { images: unknown[]; order_photos: unknown[] };
+    expect(edit).toMatchObject({ images: [], order_photos: [] });
+
+    await client.sync.upsert('P-1', { ...product, price: 98, images: [{ url: 'https://cdn.zaytoon.test/other.png' }] });
+    expect(calls.filter((c) => c.method === 'PUT').length).toBe(uploadsAfterCreate + 1);
+    expect((await client.syncStore.get('P-1'))?.imagesHash).toBeDefined();
+  });
+
   for (const uploadUrl of ['https://evil.example/steal?x=1', 'https://attacker-bucket.s3.us-east-1.amazonaws.com/temp/x.jpg?sig=1']) {
     it(`refuses an upload URL outside OLX's bucket (${new URL(uploadUrl).host}): nothing uploaded, no ad sent, not parked`, async () => {
       const { client, calls } = setup({ uploadUrl });
