@@ -42,12 +42,18 @@ const product = JSON.parse(readFileSync(PRODUCT_FILE, 'utf8')) as ListingInput;
 const config = loadConfig({ ...process.env, OLX_SYNC_STORE_FILE: 'data/live-test-store.json' });
 const client = OlxClient.fromConfig(config, { logger: silentLogger });
 
-/** The ad as "My ads" shows it: state and photo count. */
+/** The ad as "My ads" shows it: state and photo count (My ads has no real price field). */
 async function onOlx(adId: string): Promise<string> {
   const ad = await client.listings.findMine(adId);
   if (!ad) return 'not found in the newest pages of My ads';
-  const raw = ad.raw as { photos?: unknown[]; price?: unknown };
-  return `state ${ad.status}, ${raw.photos?.length ?? '?'} photo(s), price ${String(raw.price ?? '?')}`;
+  const raw = ad.raw as { photos?: unknown[] };
+  return `state ${ad.status}, ${raw.photos?.length ?? '?'} photo(s)`;
+}
+
+/** The price OLX stored, from an edit-ad response (`data.ad.extraFields.price`). */
+function storedPrice(raw: unknown): string {
+  const ad = (raw as { data?: { ad?: { extraFields?: { price?: unknown } } } })?.data?.ad;
+  return ad?.extraFields?.price !== undefined ? String(ad.extraFields.price) : '?';
 }
 
 const step = process.argv[2];
@@ -81,6 +87,7 @@ try {
     console.log(`before: ${await onOlx(record.adId)}`);
     const r = await client.sync.upsert(PRODUCT_ID, { ...product, price: product.price + 1 });
     console.log(`${r.action}: ad ${r.record.adId}, status ${r.record.status}`);
+    if (r.action !== 'unchanged') console.log(`OLX stored price: ${storedPrice(r.ad.raw)} (sent ${product.price + 1})`);
     console.log(`after:  ${await onOlx(r.record.adId)}`);
     console.log('\nSame photo count before and after = photos are replaced (good). More after = they pile up.');
     console.log('Next: npm run live-test -- delete');
