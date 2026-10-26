@@ -5,7 +5,8 @@ import { basename, extname } from 'node:path';
 import { OlxSdkError } from '../errors.js';
 import type { OlxHttpClient } from '../http/HttpClient.js';
 import type { OlxAdapter } from './adapter.js';
-import type { ImageSource } from './types.js';
+import { imageSize } from './imageSize.js';
+import type { AccountInfo, ImageSource, UploadedImage } from './types.js';
 
 const MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -93,26 +94,37 @@ export class ImageUploader {
 
   /**
    * Fetches and uploads images one at a time, in order (only one image is in memory at a
-   * time), with one overall download budget for the listing. Returns OLX's image ids.
+   * time), with one overall download budget for the listing. Returns the uploaded photos.
    */
-  async uploadAll(images: ImageSource[]): Promise<string[]> {
+  async uploadAll(images: ImageSource[], account?: AccountInfo): Promise<UploadedImage[]> {
     const deadline = Date.now() + (this.o.totalTimeoutMs ?? 120_000);
-    const ids: string[] = [];
-    for (const [i, img] of images.entries()) ids.push(await this.send(await this.load(img, i + 1, deadline)));
-    return ids;
+    const out: UploadedImage[] = [];
+    for (const [i, img] of images.entries()) out.push(await this.send(await this.load(img, i + 1, deadline), i + 1, account));
+    return out;
   }
 
-  async upload(img: ImageSource, position = 1): Promise<string> {
+  async upload(img: ImageSource, position = 1, account?: AccountInfo): Promise<UploadedImage> {
     const deadline = Date.now() + (this.o.totalTimeoutMs ?? 120_000);
-    return this.send(await this.load(img, position, deadline));
+    return this.send(await this.load(img, position, deadline), position, account);
   }
 
-  private async send({ data, filename, contentType }: LoadedImage): Promise<string> {
+  private async send(img: LoadedImage, n: number, account?: AccountInfo): Promise<UploadedImage> {
+    const flow = this.o.adapter.signedUpload;
+    if (flow) {
+      // Read the size first: an unreadable image fails before anything is sent to OLX.
+      const size = imageSize(img.data);
+      if (!size) throw new OlxSdkError(`Image ${n} is not a readable JPEG, PNG, WebP or GIF`);
+      const name = flow.newImageName(account);
+      // Part of a single ad write: the caller already holds the write slot.
+      const raw = await this.o.http.call('signImageUpload', { query: flow.signQuery(name), rateLimit: false });
+      const uploadUrl = flow.parseSignedUrl(raw);
+      await this.o.http.putToSignedUrl(uploadUrl, img.data, size.type, (host) => flow.isAllowedUploadHost(host));
+      return flow.toUploadedImage(name, { width: size.width, height: size.height, contentType: size.type, uploadUrl });
+    }
     const form = new FormData();
-    form.append(this.o.adapter.imageFieldName ?? 'file', new Blob([data as BlobPart], { type: contentType }), filename);
-    // Part of a single ad write: the caller already holds the write slot.
+    form.append(this.o.adapter.imageFieldName ?? 'file', new Blob([img.data as BlobPart], { type: img.contentType }), img.filename);
     const raw = await this.o.http.call('uploadImage', { form, rateLimit: false });
-    return this.o.adapter.parseImageUpload(raw);
+    return { id: this.o.adapter.parseImageUpload(raw), contentType: img.contentType };
   }
 
   private get maxBytes(): number {

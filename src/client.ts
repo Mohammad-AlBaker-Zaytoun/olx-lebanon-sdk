@@ -5,6 +5,8 @@ import { endpointStatus, loadEndpoints, type EndpointMap, type EndpointName } fr
 import { OlxHttpClient, type HttpClientOptions, type Transport } from './http/HttpClient.js';
 import { WriteRateLimiter, type RateLimiterClock } from './http/rateLimiter.js';
 import { placeholderAdapter, type OlxAdapter } from './listings/adapter.js';
+import { olxLebanonAdapter } from './listings/olxLebanon.js';
+import type { ContactSettings } from './listings/types.js';
 import { ImageUploader, type ImageUploaderOptions } from './listings/images.js';
 import { ListingsApi } from './listings/ListingsApi.js';
 import { FileRequestLog, createLogger, silentLogger, type Logger, type RequestLog } from './logger.js';
@@ -21,7 +23,10 @@ export interface OlxClientOptions {
   sessionStore: SessionStore;
   syncStore: SyncStore;
   writeLimits: WriteLimits;
+  /** Wire format. Defaults to the built-in OLX Lebanon adapter. */
   adapter?: OlxAdapter;
+  /** Who buyers contact; empty fields fall back to the account profile. */
+  contact?: ContactSettings;
   logger?: Logger;
   requestLog?: RequestLog;
   transport?: Transport;
@@ -48,11 +53,13 @@ export class OlxClient {
   readonly syncStore: SyncStore;
   readonly mapper: CatalogMapper;
   readonly limiter: WriteRateLimiter;
+  readonly adapter: OlxAdapter;
   private readonly endpoints: EndpointMap;
 
   constructor(opts: OlxClientOptions) {
     const logger = opts.logger ?? silentLogger;
-    const adapter = opts.adapter ?? placeholderAdapter;
+    const adapter = opts.adapter ?? olxLebanonAdapter;
+    this.adapter = adapter;
     this.endpoints = opts.endpoints;
     this.session = new SessionManager({
       baseUrl: opts.baseUrl,
@@ -82,7 +89,7 @@ export class OlxClient {
       resolveHost: opts.resolveHost,
       ...opts.images,
     });
-    this.listings = new ListingsApi({ http: this.http, mapper: this.mapper, adapter, images });
+    this.listings = new ListingsApi({ http: this.http, mapper: this.mapper, adapter, images, contact: opts.contact, logger });
     this.syncStore = opts.syncStore;
     this.sync = new SyncService({ listings: this.listings, store: opts.syncStore, mapper: this.mapper, logger });
   }
@@ -113,6 +120,8 @@ export class OlxClient {
       allowedImageHosts: config.allowedImageHosts,
       extraHosts: config.extraHosts,
       captureHeaders: config.captureHeaders,
+      adapter: config.adapter === 'placeholder' ? placeholderAdapter : olxLebanonAdapter,
+      contact: config.contact,
       endpoints: overrides.endpoints ?? loadEndpoints(config.endpointsFile),
       catalog: overrides.catalog ?? loadCatalog(config.catalogFile),
       sessionStore: overrides.sessionStore ?? new FileSessionStore(config.sessionFile),
@@ -126,5 +135,11 @@ export class OlxClient {
   /** Which endpoints have been mapped so far. */
   endpointStatus(): Record<EndpointName, boolean> {
     return endpointStatus(this.endpoints);
+  }
+
+  /** Endpoints the adapter needs that aren't in the endpoints file. */
+  missingEndpoints(): EndpointName[] {
+    const status = this.endpointStatus();
+    return (this.adapter.requiredEndpoints ?? []).filter((n) => !status[n]);
   }
 }

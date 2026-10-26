@@ -21,6 +21,11 @@ const CategorySchema = z.object({
   attributeMap: z.record(z.string()).default({}),
   /** Values applied when the product doesn't provide one. */
   defaults: z.record(Attr).default({}),
+  /**
+   * Translates your values to OLX's choice values, per attribute (your attribute names),
+   * e.g. { "condition": { "new": "1", "used": "2" } }. Unlisted values are sent unchanged.
+   */
+  valueMap: z.record(z.record(Attr)).default({}),
 });
 
 const LocationSchema = z.object({
@@ -118,7 +123,11 @@ export class CatalogMapper {
     }
 
     const attributes = Object.fromEntries(
-      Object.entries(merged).map(([key, value]) => [own(category.attributeMap, key) ?? key, value]),
+      Object.entries(merged).map(([key, value]) => {
+        const values = own(category.valueMap, key);
+        const mappedValue = values ? (own(values, String(value)) ?? value) : value;
+        return [own(category.attributeMap, key) ?? key, mappedValue];
+      }),
     );
 
     return {

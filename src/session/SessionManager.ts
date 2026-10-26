@@ -49,6 +49,16 @@ export function scopeStorageState(
   };
 }
 
+/**
+ * Decides which value to keep when a header is seen more than once during login. A user's
+ * `Bearer` token is never replaced by another scheme: third-party services the page calls
+ * (a search cluster, say) can send their own fixed `Basic` key under the same name.
+ */
+export function preferCapturedHeader(name: string, current: string | undefined, next: string): string {
+  if (name === 'authorization' && current && /^bearer\s/i.test(current) && !/^bearer\s/i.test(next)) return current;
+  return next;
+}
+
 /** Headers worth replaying if the web app sends them on authenticated calls. Extend via options. */
 export const DEFAULT_CAPTURED_HEADERS = ['authorization', 'x-access-token', 'x-auth-token', 'x-csrf-token'];
 
@@ -152,7 +162,7 @@ export class SessionManager implements SessionProvider {
         const headers = req.headers();
         for (const name of wanted) {
           const value = headers[name];
-          if (value) captured[name] = value;
+          if (value) captured[name] = preferCapturedHeader(name, captured[name], value);
         }
       });
 

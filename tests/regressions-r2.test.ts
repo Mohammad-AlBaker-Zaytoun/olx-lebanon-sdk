@@ -1,3 +1,4 @@
+import { placeholderAdapter } from '../src/listings/adapter.js';
 /**
  * Second review round: product-lifecycle defects. One test per finding.
  */
@@ -30,6 +31,7 @@ const product: ListingInput = {
 function client(transport: Transport) {
   const syncStore = new MemorySyncStore();
   const c = new OlxClient({
+    adapter: placeholderAdapter,
     baseUrl: 'https://www.olx.com.lb',
     endpoints: parseEndpoints({
       createAd: { method: 'POST', path: '/api/ads' },

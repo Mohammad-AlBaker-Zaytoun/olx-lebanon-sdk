@@ -30,4 +30,8 @@ const headers = Object.keys(saved.headers);
 console.log(`\nSession saved to ${config.sessionFile}`);
 console.log(`  cookies: ${saved.cookies.length}`);
 console.log(`  captured auth headers: ${headers.length > 0 ? headers.join(', ') : 'none (cookie-based session)'}`);
+const scheme = saved.headers.authorization?.split(/\s/, 1)[0];
+if (scheme) console.log(`  authorization scheme: ${scheme}${/^bearer$/i.test(scheme) ? '' : ' (expected Bearer; the accessToken cookie is used instead if present)'}`);
+const tokenCookie = saved.cookies.find((c) => c.name === 'accessToken');
+console.log(`  accessToken cookie: ${tokenCookie ? 'present' : 'missing'}`);
 console.log('Keep this file private — it gives full access to your OLX account.');

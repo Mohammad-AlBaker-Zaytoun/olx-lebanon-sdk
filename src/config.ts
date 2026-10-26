@@ -35,6 +35,10 @@ const EnvSchema = z.object({
   OLX_IMAGE_HOSTS: z.string().optional(),
   OLX_EXTRA_HOSTS: z.string().optional(),
   OLX_CAPTURE_HEADERS: z.string().optional(),
+  OLX_ADAPTER: z.enum(['olx-lebanon', 'placeholder']).default('olx-lebanon'),
+  OLX_CONTACT_NAME: z.string().optional(),
+  OLX_CONTACT_PHONE: z.string().optional(),
+  OLX_CONTACT_METHOD: z.string().optional(),
   SERVER_HOST: z.string().default('127.0.0.1'),
   SERVER_PORT: z.coerce.number().int().min(1).max(65535).default(8787),
   SERVER_API_KEY: z.string().min(16, 'SERVER_API_KEY must be at least 16 characters').optional(),
@@ -70,6 +74,10 @@ export interface OlxConfig {
   extraHosts: string[];
   /** Extra request header names to capture at login, on top of the defaults. */
   captureHeaders: string[];
+  /** Built-in wire format: `olx-lebanon` (default) or `placeholder` (for custom adapters). */
+  adapter: 'olx-lebanon' | 'placeholder';
+  /** Who buyers contact; empty fields fall back to the account profile. */
+  contact: { name?: string; phone?: string; method?: string };
   logLevel: LogLevel;
   server: { host: string; port: number; apiKey?: string };
   webhook?: { url: string; secret: string };
@@ -113,6 +121,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OlxConfig {
     allowedImageHosts: imageHosts.length > 0 ? imageHosts : undefined,
     extraHosts: list(e.OLX_EXTRA_HOSTS),
     captureHeaders: list(e.OLX_CAPTURE_HEADERS),
+    adapter: e.OLX_ADAPTER,
+    contact: { name: e.OLX_CONTACT_NAME, phone: e.OLX_CONTACT_PHONE, method: e.OLX_CONTACT_METHOD },
     logLevel: e.LOG_LEVEL,
     server: { host: e.SERVER_HOST, port: e.SERVER_PORT, apiKey: e.SERVER_API_KEY },
     webhook: e.WEBHOOK_URL && e.WEBHOOK_SECRET ? { url: e.WEBHOOK_URL, secret: e.WEBHOOK_SECRET } : undefined,

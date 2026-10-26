@@ -1,31 +1,148 @@
 {
-  "_comment": "Copy to config/catalog.json. Keys (e.g. 'mobile-phones', 'beirut') are YOUR names, used in categoryKey / locationKey. Replace every TODO with the real OLX id from your capture. The limits below are guesses — check them against the OLX posting form.",
-
+  "_comment": "Copy to config/catalog.json. Keys (e.g. 'laptops', 'beirut') are YOUR names, used as categoryKey / locationKey. olxCategoryId is OLX's category externalID; find ids with `npm run catalog -- categories <text>`, then run `npm run catalog -- fields <id>` to see each category's required fields and choice values, and fill requiredAttributes / attributeMap / valueMap / defaults from it. The category entries below have real ids but their fields are NOT filled in yet. Locations use OLX's numeric location id; every category accepts a district (listed below).",
   "limits": {
     "titleMaxLength": 70,
     "descriptionMaxLength": 4096,
     "maxImages": 20
   },
-
   "categories": {
     "mobile-phones": {
       "label": "Mobile Phones & Accessories > Mobile Phones",
-      "olxCategoryId": "TODO",
-      "requiredAttributes": ["brand", "condition"],
-      "attributeMap": { "brand": "make", "condition": "new_used" },
-      "defaults": { "condition": "new" }
+      "olxCategoryId": "9",
+      "requiredAttributes": [],
+      "attributeMap": {},
+      "valueMap": {},
+      "defaults": {}
+    },
+    "mobile-accessories": {
+      "label": "Mobile Phones & Accessories > Mobile Accessories",
+      "olxCategoryId": "148",
+      "requiredAttributes": [],
+      "attributeMap": {},
+      "valueMap": {},
+      "defaults": {}
     },
     "laptops": {
-      "label": "Electronics > Computers > Laptops",
-      "olxCategoryId": "TODO",
-      "requiredAttributes": ["condition"],
-      "attributeMap": { "condition": "new_used" },
-      "defaults": { "condition": "new" }
+      "label": "Electronics & Home Appliances > Laptops, Tablets, Computers",
+      "olxCategoryId": "175",
+      "requiredAttributes": [],
+      "attributeMap": {},
+      "valueMap": {},
+      "defaults": {}
+    },
+    "computer-parts": {
+      "label": "Electronics & Home Appliances > Computer Parts & IT Accessories",
+      "olxCategoryId": "174",
+      "requiredAttributes": [],
+      "attributeMap": {},
+      "valueMap": {},
+      "defaults": {}
     }
   },
-
   "locations": {
-    "beirut": { "label": "Beirut", "olxLocationId": "TODO" },
-    "mount-lebanon": { "label": "Mount Lebanon", "olxLocationId": "TODO" }
+    "beirut": {
+      "label": "Beirut",
+      "olxLocationId": "2"
+    },
+    "metn": {
+      "label": "Metn",
+      "olxLocationId": "21"
+    },
+    "baabda": {
+      "label": "Baabda",
+      "olxLocationId": "8"
+    },
+    "keserouan": {
+      "label": "Keserouan",
+      "olxLocationId": "18"
+    },
+    "jbeil": {
+      "label": "Jbeil",
+      "olxLocationId": "16"
+    },
+    "aley": {
+      "label": "Aley",
+      "olxLocationId": "7"
+    },
+    "chouf": {
+      "label": "Chouf",
+      "olxLocationId": "13"
+    },
+    "tripoli": {
+      "label": "Tripoli",
+      "olxLocationId": "3"
+    },
+    "koura": {
+      "label": "Koura",
+      "olxLocationId": "19"
+    },
+    "zgharta": {
+      "label": "Zgharta",
+      "olxLocationId": "27"
+    },
+    "batroun": {
+      "label": "Batroun",
+      "olxLocationId": "10"
+    },
+    "becharre": {
+      "label": "Becharre",
+      "olxLocationId": "11"
+    },
+    "minieh-denniye": {
+      "label": "Minieh-Denniye",
+      "olxLocationId": "22"
+    },
+    "akkar": {
+      "label": "Akkar",
+      "olxLocationId": "6"
+    },
+    "saida": {
+      "label": "Saida",
+      "olxLocationId": "5"
+    },
+    "tyre": {
+      "label": "Tyre",
+      "olxLocationId": "25"
+    },
+    "nabatieh": {
+      "label": "Nabatieh",
+      "olxLocationId": "23"
+    },
+    "bint-jbeil": {
+      "label": "Bint Jbeil",
+      "olxLocationId": "12"
+    },
+    "marjeeyoun": {
+      "label": "Marjeeyoun",
+      "olxLocationId": "20"
+    },
+    "hasbaya": {
+      "label": "Hasbaya",
+      "olxLocationId": "14"
+    },
+    "jezzine": {
+      "label": "Jezzine",
+      "olxLocationId": "17"
+    },
+    "zahle": {
+      "label": "Zahle",
+      "olxLocationId": "4"
+    },
+    "baalbeck": {
+      "label": "Baalbeck",
+      "olxLocationId": "9"
+    },
+    "hermel": {
+      "label": "Hermel",
+      "olxLocationId": "15"
+    },
+    "west-bekaa": {
+      "label": "West Bekaa",
+      "olxLocationId": "26"
+    },
+    "rachaya": {
+      "label": "Rachaya",
+      "olxLocationId": "24"
+    }
   }
 }

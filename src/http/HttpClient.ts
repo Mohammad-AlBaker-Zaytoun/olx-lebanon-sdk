@@ -238,6 +238,54 @@ export class OlxHttpClient {
     }
   }
 
+  /**
+   * PUTs a file to a one-time signed upload URL (e.g. S3). The session is never attached,
+   * redirects are not followed, and only hosts accepted by `isAllowedHost` are contacted.
+   * The URL's query (the signature) is kept out of logs and errors.
+   */
+  async putToSignedUrl(
+    rawUrl: string,
+    data: Uint8Array,
+    contentType: string,
+    isAllowedHost: (host: string) => boolean,
+  ): Promise<void> {
+    let url: URL;
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      throw new OlxSdkError('OLX returned an invalid upload URL');
+    }
+    if (url.protocol !== 'https:' || url.username || url.password) {
+      throw new OlxSdkError('OLX returned an upload URL that is not plain https; refusing to upload');
+    }
+    if (!isAllowedHost(url.hostname.toLowerCase())) {
+      throw new OlxSdkError(`OLX returned an upload URL on an unexpected host (${url.hostname}); refusing to upload`);
+    }
+    const name = 'signedUpload';
+    const started = Date.now();
+    let res: Response;
+    try {
+      res = await this.transport(url.toString(), {
+        method: 'PUT',
+        headers: { 'content-type': contentType },
+        body: data as BodyInit,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(this.o.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      });
+    } catch (err) {
+      this.record({ name, method: 'PUT', url: url.toString(), attempt: 1, started, error: (err as Error).name });
+      throw new UncertainWriteError(name, 'Network error or timeout while uploading a photo', { cause: err });
+    }
+    this.record({ name, method: 'PUT', url: url.toString(), attempt: 1, started, status: res.status });
+    await res.body?.cancel().catch(() => {});
+    if (res.status >= 200 && res.status < 300) return;
+    if (res.status >= 500) {
+      throw new UncertainWriteError(name, `Photo upload returned HTTP ${res.status}`, { status: res.status });
+    }
+    // Includes 403 for an expired signature: the photo was not stored.
+    throw new OlxHttpError(name, res.status, undefined);
+  }
+
   private record(r: {
     name: string;
     method: string;

@@ -1,3 +1,4 @@
+import { placeholderAdapter } from '../src/listings/adapter.js';
 import { describe, expect, it, vi } from 'vitest';
 import { OlxClient } from '../src/client.js';
 import { parseEndpoints } from '../src/endpoints.js';
@@ -35,6 +36,7 @@ function makeClient(sessionData = session) {
     async () => new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } }),
   ) as unknown as typeof fetch;
   const client = new OlxClient({
+    adapter: placeholderAdapter,
     baseUrl: 'https://www.olx.com.lb',
     endpoints,
     catalog,

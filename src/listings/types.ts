@@ -22,7 +22,40 @@ export interface ListingInput {
   images?: ImageSource[];
 }
 
-export type AdStatus = 'active' | 'pending_review' | 'rejected' | 'expired' | 'deleted' | 'unknown';
+/**
+ * `limited`: the ad exists but OLX keeps it hidden, usually because the account has used up
+ * its free ads in that category and the ad needs a paid package to go live.
+ */
+export type AdStatus = 'active' | 'pending_review' | 'limited' | 'rejected' | 'expired' | 'deleted' | 'unknown';
+
+/** A photo uploaded to OLX, as the ad body refers to it. */
+export interface UploadedImage {
+  /** OLX's id or name for the photo. */
+  id: string;
+  /** Where OLX serves the uploaded photo, when the wire format needs it. */
+  url?: string;
+  width?: number;
+  height?: number;
+  contentType?: string;
+}
+
+/** The logged-in OLX account, read from OLX when the wire format needs it. */
+export interface AccountInfo {
+  /** The account's public id (OLX: `externalID`, sent as `user_external_id`). */
+  externalId: string;
+  /** Display name shown on ads. */
+  name?: string;
+  /** Phone number in the format OLX stores it. */
+  phone?: string;
+}
+
+/** Who buyers contact; empty fields fall back to the account profile. */
+export interface ContactSettings {
+  name?: string;
+  phone?: string;
+  /** OLX's contact option, e.g. phone only, chat only, or both. */
+  method?: string;
+}
 
 export interface OlxAd {
   id: string;

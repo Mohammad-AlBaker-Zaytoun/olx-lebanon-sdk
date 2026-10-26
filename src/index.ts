@@ -21,7 +21,22 @@ export {
   type Transport,
 } from './http/HttpClient.js';
 export { WriteRateLimiter, type RateLimiterClock } from './http/rateLimiter.js';
-export { normalizeStatus, placeholderAdapter, type OlxAdapter } from './listings/adapter.js';
+export {
+  normalizeStatus,
+  placeholderAdapter,
+  type OlxAdapter,
+  type PayloadContext,
+  type SignedUploadFlow,
+} from './listings/adapter.js';
+export {
+  OLX_LB_DEFAULT_CONTACT_METHOD,
+  OLX_LB_IMAGE_BASE,
+  createOlxLebanonAdapter,
+  olxLebanonAdapter,
+  olxLebanonBearer,
+  type OlxLebanonAdapterOptions,
+} from './listings/olxLebanon.js';
+export { imageSize, type ImageSize } from './listings/imageSize.js';
 export { ImageUploader, isPrivateAddress, type ImageUploaderOptions } from './listings/images.js';
 export { ListingsApi, type CreateHooks, type ListingsPort } from './listings/ListingsApi.js';
 export * from './listings/types.js';
@@ -56,6 +71,7 @@ export {
 } from './server/queue.js';
 export {
   DEFAULT_CAPTURED_HEADERS,
+  preferCapturedHeader,
   scopeStorageState,
   SessionManager,
   type SessionManagerOptions,
@@ -85,4 +101,23 @@ export {
   type SyncStore,
 } from './sync/SyncStore.js';
 export { createWebhookNotifier, signWebhook, stripRaw, type WebhookNotifier } from './server/webhook.js';
-export { formatHarSummary, isSensitiveSegment, summarizeHar, type HarCall } from './tools/har.js';
+export {
+  formatHarSummary,
+  formatHostActivity,
+  isSensitiveSegment,
+  summarizeHar,
+  tallyHosts,
+  type HarCall,
+  type HostActivity,
+} from './tools/har.js';
+export {
+  OLX_LB_CATALOG_API,
+  catalogEntry,
+  categoryLabel,
+  describeFields,
+  listCategories,
+  postableFields,
+  type OlxCategoryNode,
+  type OlxField,
+  type OlxFieldChoice,
+} from './tools/catalogFields.js';

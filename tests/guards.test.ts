@@ -135,6 +135,7 @@ describe('guards: rate limiter', () => {
   it('[M5][M6] create and update each take exactly one write slot', async () => {
     const t = vi.fn<Transport>(async (_u, init) => (init.method === 'POST' ? jsonResponse({ id: 'ad-1' }, 201) : new Response(null, { status: 204 })));
     const c = new OlxClient({
+    adapter: placeholderAdapter,
       baseUrl: 'https://www.olx.com.lb',
       endpoints: parseEndpoints({
         createAd: { method: 'POST', path: '/api/ads' },

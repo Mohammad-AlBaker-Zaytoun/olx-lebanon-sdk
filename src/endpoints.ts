@@ -14,6 +14,10 @@ export const ENDPOINT_NAMES = [
   'getAd',
   'listMyAds',
   'uploadImage',
+  /** Signed-URL uploads: asks OLX for a one-time upload address for a photo. */
+  'signImageUpload',
+  /** The logged-in account (id, name, phone), for wire formats that need it. */
+  'currentUser',
 ] as const;
 
 export type EndpointName = (typeof ENDPOINT_NAMES)[number];

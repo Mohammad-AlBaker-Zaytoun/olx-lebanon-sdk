@@ -44,6 +44,7 @@ async function main(): Promise<void> {
     status: async () => ({
       session: await client.session.status(),
       endpoints: client.endpointStatus(),
+      missingEndpoints: client.missingEndpoints(),
       queue: queue.stats(),
       writesLastHour: client.limiter.recentCount,
       // A `creating` marker for a create that is running right now is expected, not a problem.
@@ -53,9 +54,7 @@ async function main(): Promise<void> {
     }),
   });
 
-  const missing = Object.entries(client.endpointStatus())
-    .filter(([, ok]) => !ok)
-    .map(([name]) => name);
+  const missing = client.missingEndpoints();
   if (missing.length > 0) {
     logger.warn('Some OLX endpoints are not configured yet; those operations will fail', { missing });
   }

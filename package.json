@@ -32,6 +32,7 @@
     "login": "tsx scripts/login.ts",
     "capture": "tsx scripts/capture-flow.ts",
     "capture:shapes": "tsx scripts/har-shapes.ts",
+    "catalog": "tsx scripts/catalog.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

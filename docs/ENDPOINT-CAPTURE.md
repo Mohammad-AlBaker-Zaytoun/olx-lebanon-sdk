@@ -2,6 +2,9 @@
 
 OLX Lebanon has no public API, so the SDK copies what the OLX website already does when **you** post an ad. This guide records that once and turns it into configuration.
 
+> [!NOTE]
+> This has already been done once (October 2026): `config/endpoints.example.json` and the built-in `olxLebanonAdapter` come from that capture. Use this guide when OLX changes something and posting starts failing, or to check a format the SDK doesn't cover yet.
+
 Do this with **your own account**, and post **one real ad** you actually want listed, or delete it at the end.
 
 ## 1. Record a manual post

@@ -1,20 +1,57 @@
+import type { EndpointName } from '../endpoints.js';
 import { OlxSdkError } from '../errors.js';
 import type { MappedListing } from '../mapping/CatalogMapper.js';
 import type { SessionData } from '../session/storage.js';
-import type { AdStatus, OlxAd } from './types.js';
+import type { AccountInfo, AdStatus, ContactSettings, OlxAd, UploadedImage } from './types.js';
+
+/** What the adapter knows besides the listing itself when it builds a request body. */
+export interface PayloadContext {
+  /** `create` for a new ad, `update` for an edit of an existing one. */
+  mode: 'create' | 'update';
+  /** The logged-in account, when the adapter reads it (`parseAccount`). */
+  account?: AccountInfo;
+  /** Contact settings from configuration, already merged with the account profile. */
+  contact: ContactSettings;
+}
 
 /**
- * The one place that knows OLX's wire format. Request bodies and response shapes come
- * from your captured traffic (docs/ENDPOINT-CAPTURE.md); pass your own adapter to
- * `OlxClient` instead of editing SDK code.
+ * Upload by signed URL: ask OLX for a one-time upload address, then PUT the file there.
+ * Your session is never sent to the upload host.
+ */
+export interface SignedUploadFlow {
+  /** A fresh name for the photo; sent to `signImageUpload`. */
+  newImageName(account?: AccountInfo): string;
+  /** Query parameters for the `signImageUpload` call. */
+  signQuery(name: string): Record<string, string>;
+  /** Reads the upload URL out of the `signImageUpload` response. */
+  parseSignedUrl(raw: unknown): string;
+  /** Hosts the upload URL may point to; anything else is refused. */
+  isAllowedUploadHost(host: string): boolean;
+  /** How the ad body refers to the uploaded photo. `uploadUrl` is where it was PUT. */
+  toUploadedImage(
+    name: string,
+    info: { width: number; height: number; contentType: string; uploadUrl: string },
+  ): UploadedImage;
+}
+
+/**
+ * The one place that knows OLX's wire format. The SDK ships `olxLebanonAdapter` (the
+ * default), mapped from a real capture; pass your own to `OlxClient` if OLX changes.
  */
 export interface OlxAdapter {
-  buildAdPayload(listing: MappedListing, imageIds: string[]): unknown;
+  buildAdPayload(listing: MappedListing, images: UploadedImage[], ctx: PayloadContext): unknown;
   parseAd(raw: unknown): OlxAd;
   parseAdList(raw: unknown): OlxAd[];
+  /** Multipart uploads (`uploadImage`): reads the photo id from the response. */
   parseImageUpload(raw: unknown): string;
   /** Multipart field name OLX expects for the image file. */
   imageFieldName?: string;
+  /** Set to upload photos by signed URL instead of multipart. */
+  signedUpload?: SignedUploadFlow;
+  /** Reads the account from the `currentUser` response; set if the body needs account data. */
+  parseAccount?(raw: unknown): AccountInfo;
+  /** Endpoints this adapter needs; the service warns at start-up about any that are missing. */
+  requiredEndpoints?: EndpointName[];
   /**
    * Extra headers for calls to the OLX domain, built from the saved session — e.g. a
    * bearer token the web app keeps in localStorage (`session.localStorage[origin][key]`).
@@ -55,6 +92,7 @@ export function normalizeStatus(value?: string): AdStatus {
   // and their exact meaning varies, so don't guess.
   if (/(^|[^a-z])(not|non)([^a-z]|$)|(^|[^a-z])(un|in)(active|approved|published|live)/.test(s)) return 'unknown';
   if (/delet|remov|archiv|deactiv|disabled/.test(s)) return 'deleted';
+  if (/limit/.test(s)) return 'limited';
   if (/expir|outdated/.test(s)) return 'expired';
   if (/pending|moderat|review|waiting/.test(s)) return 'pending_review';
   if (/(^|_)(active|live|published|approved)/.test(s)) return 'active';
@@ -68,8 +106,9 @@ export function normalizeStatus(value?: string): AdStatus {
  */
 export const placeholderAdapter: OlxAdapter = {
   imageFieldName: 'file',
+  requiredEndpoints: ['createAd', 'updateAd', 'deleteAd', 'uploadImage'],
 
-  buildAdPayload(l, imageIds) {
+  buildAdPayload(l, images) {
     return {
       title: l.title,
       description: l.description,
@@ -77,7 +116,7 @@ export const placeholderAdapter: OlxAdapter = {
       category_id: l.categoryId,
       location_id: l.locationId,
       attributes: l.attributes,
-      images: imageIds,
+      images: images.map((i) => i.id),
     };
   },
 
