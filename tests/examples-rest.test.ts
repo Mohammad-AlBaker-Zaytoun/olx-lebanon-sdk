@@ -62,7 +62,8 @@ afterAll(() => app.close());
 
 const env = () => ({ ...process.env, OLX_SDK_API_KEY: KEY, OLX_SDK_URL: url });
 
-describe('REST examples', () => {
+// Interpreters start slowly on Windows runners, and the clients poll every few seconds.
+describe('REST examples', { timeout: 30_000 }, () => {
   it.skipIf(!python)('examples/rest/client.py syncs a product and reads the job', async () => {
     const { stdout } = await run(python!, ['examples/rest/client.py'], { env: env() });
     expect(stdout.trim()).toBe('created 117146151 active');
@@ -95,7 +96,7 @@ except OlxSdkError as e:
   });
 });
 
-describe('webhook verification examples', () => {
+describe('webhook verification examples', { timeout: 30_000 }, () => {
   const secret = 'webhook-secret-0123456789';
   const body = JSON.stringify({ id: 'j1', type: 'upsert', productId: 'SKU-1', status: 'succeeded' });
 
