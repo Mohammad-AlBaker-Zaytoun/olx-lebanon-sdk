@@ -189,7 +189,8 @@ export const openApiDocument = {
         type: 'object',
         description:
           'An ad. Give the category as `categoryId` (an OLX id) or `categoryKey` (your catalog), and the location as ' +
-          '`locationId` (an OLX area id) or `locationKey`.',
+          "`locationId` (an OLX area id) or `locationKey`, or leave the location out to use the catalog's " +
+          '`listingDefaults`. A `listingDefaults.descriptionFooter` is added to the description when the job runs.',
         properties: {
           title: { type: 'string', minLength: 1, maxLength: 70 },
           description: { type: 'string', minLength: 1, maxLength: 4096 },

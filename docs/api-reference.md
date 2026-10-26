@@ -100,7 +100,7 @@ OLX's public catalog. No token needed: `new OlxCatalog()` works on its own.
 | `price` | `number` | In `currency`. |
 | `currency` | `'USD' \| 'LBP'` | Default `USD`. |
 | `categoryId` / `categoryKey` | `string \| number` / `string` | OLX's id, or a key from your catalog. Exactly one. |
-| `locationId` / `locationKey` | `string \| number` / `string` | An area id, or a key from your catalog. Exactly one. |
+| `locationId` / `locationKey` | `string \| number` / `string` | An area id, or a key from your catalog. One of them, or neither to use the catalog's `listingDefaults`. |
 | `attributes` | `Record<string, string \| number \| boolean>` | The category's fields: OLX's names and values with `categoryId`, your names with `categoryKey`. |
 | `images` | `ImageSource[]` | Up to 20. |
 

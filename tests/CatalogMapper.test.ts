@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MappingError } from '../src/errors.js';
-import { CatalogMapper } from '../src/mapping/CatalogMapper.js';
+import { CatalogMapper, parseCatalog } from '../src/mapping/CatalogMapper.js';
 import { catalog } from './helpers.js';
 
 const mapper = new CatalogMapper(catalog);
@@ -79,5 +79,34 @@ describe('CatalogMapper: locations OLX would reject', () => {
   it('accepts areas, and ids missing from the snapshot (OLX may have added them since)', () => {
     expect(ids.resolve({ ...ad, locationId: '47' }).locationId).toBe('47');
     expect(ids.resolve({ ...ad, locationId: '99999999' }).locationId).toBe('99999999');
+  });
+});
+
+describe('CatalogMapper: listingDefaults', () => {
+  const ad = { title: 'Laptop', description: 'New, sealed.', price: 899, categoryId: '175' };
+  const withDefaults = (listingDefaults: Record<string, unknown>) =>
+    new CatalogMapper(parseCatalog({ locations: { shop: { olxLocationId: '99' } }, listingDefaults }));
+
+  it("uses the default location when a listing gives none, and the listing's own when it does", () => {
+    expect(withDefaults({ locationId: '99' }).resolve(ad).locationId).toBe('99');
+    expect(withDefaults({ locationKey: 'shop' }).resolve(ad).locationId).toBe('99');
+    expect(withDefaults({ locationId: '99' }).resolve({ ...ad, locationId: '47' }).locationId).toBe('47');
+  });
+
+  it('refuses a district as the default, like any location', () => {
+    expect(() => withDefaults({ locationId: '2' }).resolve(ad)).toThrow(/district "Beirut"/);
+  });
+
+  it('adds the footer once, after a blank line, and counts it in the length limit', () => {
+    const m = withDefaults({ locationId: '99', descriptionFooter: 'Delivery all over Lebanon' });
+    expect(m.resolve(ad).description).toBe('New, sealed.\n\nDelivery all over Lebanon');
+    expect(m.resolve({ ...ad, description: 'New.\n\nDelivery all over Lebanon' }).description).toBe(
+      'New.\n\nDelivery all over Lebanon',
+    );
+    expect(() => m.resolve({ ...ad, description: 'x'.repeat(4090) })).toThrow(/with the footer; OLX allows 4096/);
+  });
+
+  it('rejects both a default locationId and locationKey', () => {
+    expect(() => parseCatalog({ listingDefaults: { locationId: '99', locationKey: 'shop' } })).toThrow(/not both/);
   });
 });

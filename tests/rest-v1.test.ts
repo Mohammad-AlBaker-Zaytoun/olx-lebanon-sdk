@@ -273,3 +273,16 @@ describe('malformed listing bodies', () => {
     expect(res.json()).toMatchObject({ error: { code: expect.stringMatching(/^(invalid_listing|bad_request)$/) } });
   });
 });
+
+describe('location in the listing body', () => {
+  it('may be left out (the catalog default applies when the job runs), but not given twice', async () => {
+    const { app } = server();
+    const { locationId: _omit, ...noLocation } = listing;
+    const put = (payload: unknown) =>
+      app.inject({ method: 'PUT', url: '/v1/products/P1/listing', headers: auth, payload: payload as object });
+    expect((await put(noLocation)).statusCode).toBe(202);
+    const both = await put({ ...listing, locationKey: 'shop' });
+    expect(both.statusCode).toBe(400);
+    expect(both.json()).toMatchObject({ error: { details: { issues: [expect.objectContaining({ path: 'locationId' })] } } });
+  });
+});

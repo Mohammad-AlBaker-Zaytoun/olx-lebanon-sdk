@@ -21,7 +21,7 @@ export interface ListingInput {
   categoryKey?: string;
   /** OLX's location id of an area (not a district), e.g. "47" for Beirut > Hamra. */
   locationId?: string | number;
-  /** A key from your catalog file. Use this or `locationId`. */
+  /** A key from your catalog file. Use this or `locationId`, or neither to use `listingDefaults`. */
   locationKey?: string;
   /**
    * The category's fields: OLX's attribute names and choice values when you use
@@ -137,8 +137,9 @@ export const RestListingSchema = z
     message: 'give either categoryKey or categoryId',
     path: ['categoryId'],
   })
-  .refine((l) => (l.locationKey === undefined) !== (l.locationId === undefined), {
-    message: 'give either locationKey or locationId',
+  // Neither is fine when the catalog sets listingDefaults.locationId; that is checked when the job runs.
+  .refine((l) => l.locationKey === undefined || l.locationId === undefined, {
+    message: 'give locationKey or locationId, not both',
     path: ['locationId'],
   });
 

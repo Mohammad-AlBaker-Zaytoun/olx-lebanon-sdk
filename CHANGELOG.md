@@ -6,6 +6,7 @@ A library you install in a Node.js or Next.js app and call directly.
 
 ### Added
 
+- Store-wide `listingDefaults` in the catalog: a default location for listings that don't give one, and a `descriptionFooter` added to every description ("Delivery all over Lebanon"). Both count in the sync fingerprint; over REST, the location may now be left out.
 - `createOlxClient(options)`: configure everything in code (`accessToken`, `store`, `catalog`, `contact`, `writeLimits`…), with no files or environment variables. OLX Lebanon's endpoints are built in.
 - `client.ads`: `create`, `update`, `delete`, `list`, `find`, `status` by OLX id. On `update`, leaving `images` out keeps the ad's photos, and passing `images` replaces them.
 - `client.catalog`: `findCategories`, `fields`, `locations`, `location`. Categories and fields are read live from OLX's public API and cached for an hour. Locations ship with the SDK (662 entries, including Arabic names).

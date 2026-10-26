@@ -49,6 +49,21 @@ export const CatalogSchema = z.object({
     .default({}),
   categories: z.record(z.string(), CategorySchema).default({}),
   locations: z.record(z.string(), LocationSchema).default({}),
+  /**
+   * Applied to every listing: a location for listings that don't give one (a store with one
+   * address), and a line added to the end of every description ("Delivery all over Lebanon").
+   */
+  listingDefaults: z
+    .object({
+      locationId: Id.optional(),
+      locationKey: z.string().min(1).optional(),
+      descriptionFooter: z.string().trim().min(1).max(500).optional(),
+    })
+    .refine((d) => d.locationId === undefined || d.locationKey === undefined, {
+      message: 'give locationId or locationKey, not both',
+      path: ['locationId'],
+    })
+    .default({}),
 });
 
 export type Catalog = z.infer<typeof CatalogSchema>;
@@ -132,19 +147,27 @@ export class CatalogMapper {
       issues.push('Give the category: categoryId (an OLX id) or categoryKey (from your catalog file)');
     }
 
-    if (input.locationId !== undefined && input.locationKey !== undefined) {
+    // A listing without a location uses the store-wide default, if there is one.
+    const defaults = this.catalog.listingDefaults;
+    const loc =
+      input.locationId !== undefined || input.locationKey !== undefined
+        ? { locationId: input.locationId, locationKey: input.locationKey }
+        : { locationId: defaults.locationId, locationKey: defaults.locationKey };
+    if (loc.locationId !== undefined && loc.locationKey !== undefined) {
       issues.push('Give locationId or locationKey, not both');
-    } else if (input.locationId !== undefined) {
-      locationId = String(input.locationId).trim();
+    } else if (loc.locationId !== undefined) {
+      locationId = String(loc.locationId).trim();
       if (!/^\d+$/.test(locationId)) issues.push(`locationId "${locationId}" is not a numeric OLX location id`);
-    } else if (input.locationKey !== undefined) {
-      const location = own(this.catalog.locations, input.locationKey);
-      if (!location) issues.push(`Unknown locationKey "${input.locationKey}" — add it to your catalog file`);
+    } else if (loc.locationKey !== undefined) {
+      const location = own(this.catalog.locations, loc.locationKey);
+      if (!location) issues.push(`Unknown locationKey "${loc.locationKey}" — add it to your catalog file`);
       else if (isPlaceholderId(location.olxLocationId)) {
-        issues.push(`Location "${input.locationKey}" still has a placeholder olxLocationId — set the real id`);
+        issues.push(`Location "${loc.locationKey}" still has a placeholder olxLocationId — set the real id`);
       } else locationId = location.olxLocationId;
     } else {
-      issues.push('Give the location: locationId (an OLX area id) or locationKey (from your catalog file)');
+      issues.push(
+        'Give the location: locationId (an OLX area id) or locationKey (from your catalog file), or set listingDefaults.locationId',
+      );
     }
     if (locationId) {
       const tooBroad = broadLocation(locationId);
@@ -154,14 +177,18 @@ export class CatalogMapper {
     // OLX's own limits apply unless the catalog sets its own.
     const { titleMaxLength, descriptionMaxLength, maxImages } = { ...OLX_LB_LIMITS, ...this.catalog.limits };
     const title = input.title.trim();
-    const description = input.description.trim();
+    const body = input.description.trim();
     if (!title) issues.push('Title is empty');
-    if (!description) issues.push('Description is empty');
+    if (!body) issues.push('Description is empty');
+    const footer = defaults.descriptionFooter;
+    const description = body && footer && !body.endsWith(footer) ? `${body}\n\n${footer}` : body;
     if (titleMaxLength && title.length > titleMaxLength) {
       issues.push(`Title is ${title.length} characters; OLX allows ${titleMaxLength}`);
     }
     if (descriptionMaxLength && description.length > descriptionMaxLength) {
-      issues.push(`Description is ${description.length} characters; OLX allows ${descriptionMaxLength}`);
+      issues.push(
+        `Description is ${description.length} characters${description === body ? '' : ' with the footer'}; OLX allows ${descriptionMaxLength}`,
+      );
     }
     if (maxImages && (input.images?.length ?? 0) > maxImages) {
       issues.push(`${input.images?.length} images given; OLX allows ${maxImages}`);

@@ -24,7 +24,7 @@ createOlxClient({
 | `session` | — | A saved session object, as `olx-lb login` writes it. |
 | `sessionStore` | — | Your own `{ load, save, clear }` store for the session. |
 | `store` | `MemorySyncStore` | Where `sync` keeps product ↔ ad links. Use a database in production ([concepts](concepts.md#the-store)). |
-| `catalog` | none | Your own names for categories and locations ([concepts](concepts.md#your-own-names-the-catalog)). An object or parsed JSON. |
+| `catalog` | none | Your own names for categories and locations ([concepts](concepts.md#your-own-names-the-catalog)), and `listingDefaults`: a default location and a description footer ([store-wide defaults](concepts.md#store-wide-defaults)). |
 | `contact` | your OLX profile | `{ name, phone, method }` shown to buyers. Empty fields come from your profile. `method` defaults to `allow_chat_communication`. |
 | `writeLimits` | `{ minIntervalMs: 60000, jitterMs: 15000, maxPerHour: 20 }` | Write pacing ([concepts](concepts.md#pacing)). Partial values are merged with the defaults. |
 | `allowedImageHosts` | any public https host | Only download photos from these hosts (and their subdomains). Listed hosts are trusted as-is: http and private addresses are allowed for them. |
@@ -100,11 +100,15 @@ To use a settings file other than `.env`, pass `--env-file <path>` to any `olx-l
   },
   "locations": {
     "shop": { "olxLocationId": "47" }
+  },
+  "listingDefaults": {
+    "locationKey": "shop",
+    "descriptionFooter": "Delivery all over Lebanon"
   }
 }
 ```
 
-`npx olx-lb catalog fields 175` prints an entry like this for any category, with every choice filled in. `olx-lb check --product product.json` shows how a product maps, without posting it.
+`listingDefaults` is optional: see [store-wide defaults](concepts.md#store-wide-defaults). `npx olx-lb catalog fields 175` prints an entry like this for any category, with every choice filled in. `olx-lb check --product product.json` shows how a product maps, without posting it.
 
 ## Files the SDK writes
 

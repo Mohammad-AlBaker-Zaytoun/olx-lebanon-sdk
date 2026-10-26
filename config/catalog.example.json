@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to config/catalog.json. Keys (e.g. 'laptops', 'beirut') are YOUR names, used as categoryKey / locationKey. olxCategoryId is OLX's category externalID; find ids with `npm run catalog -- categories <text>`, then run `npm run catalog -- fields <id>` to see each category's required fields and choice values, and fill requiredAttributes / attributeMap / valueMap / defaults from it. The category entries below have real ids but their fields are NOT filled in yet. Locations use OLX's numeric location id of an AREA inside a district (level 2): a district alone is rejected. Find ids with `npm run catalog -- locations <text>`; the ones below are from a capture.",
+  "_comment": "Copy to config/catalog.json. Keys (e.g. 'laptops', 'beirut') are YOUR names, used as categoryKey / locationKey. olxCategoryId is OLX's category externalID; find ids with `npm run catalog -- categories <text>`, then run `npm run catalog -- fields <id>` to see each category's required fields and choice values, and fill requiredAttributes / attributeMap / valueMap / defaults from it. The category entries below have real ids but their fields are NOT filled in yet. Locations use OLX's numeric location id of an AREA inside a district (level 2): a district alone is rejected. Find ids with `npm run catalog -- locations <text>`; the ones below are from a capture. listingDefaults (optional) applies to every listing: locationId or locationKey for listings without a location, and a descriptionFooter added to every description.",
   "limits": {
     "titleMaxLength": 70,
     "descriptionMaxLength": 4096,
@@ -51,6 +51,14 @@
     "qoubaiyat": {
       "label": "Akkar > Qoubaiyat",
       "olxLocationId": "191"
+    },
+    "beirut-downtown": {
+      "label": "Beirut > Downtown",
+      "olxLocationId": "99"
     }
+  },
+  "listingDefaults": {
+    "locationKey": "beirut-downtown",
+    "descriptionFooter": "Delivery all over Lebanon"
   }
 }

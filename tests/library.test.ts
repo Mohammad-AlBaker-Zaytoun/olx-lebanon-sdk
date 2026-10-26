@@ -350,3 +350,15 @@ describe('loadEnvFile', () => {
     expect(sdk.loadEnvFile(join(file, '..', 'missing.env'), env)).toBe(false);
   });
 });
+
+describe('listingDefaults and the sync fingerprint', () => {
+  it('a new footer or default location changes the fingerprint, so the next sync edits the ad', () => {
+    const ad = { title: 'Laptop', description: 'New', price: 899, categoryId: '175' };
+    const fp = (listingDefaults: Record<string, unknown>) =>
+      sdk.hashListing(ad, new CatalogMapper(parseCatalog({ listingDefaults })).resolve(ad));
+    const base = fp({ locationId: '99' });
+    expect(fp({ locationId: '99' })).toBe(base);
+    expect(fp({ locationId: '99', descriptionFooter: 'Delivery all over Lebanon' })).not.toBe(base);
+    expect(fp({ locationId: '47' })).not.toBe(base);
+  });
+});

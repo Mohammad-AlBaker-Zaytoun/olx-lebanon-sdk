@@ -108,7 +108,7 @@ Check `session.loggedIn` and `needsAttention` from your monitoring.
 | `price` | A number, or a decimal string such as `"899.00"` (as SQL decimals often arrive). |
 | `currency` | `USD` (default) or `LBP`. |
 | `categoryId` or `categoryKey` | OLX's category id, or a key from `config/catalog.json`. Exactly one. |
-| `locationId` or `locationKey` | An OLX **area** id, or a key from the catalog file. Exactly one. |
+| `locationId` or `locationKey` | An OLX **area** id, or a key from the catalog file. Leave both out to use `listingDefaults` from the catalog file ([store-wide defaults](concepts.md#store-wide-defaults)). |
 | `attributes` | The category's fields with OLX's values (or your names, with a `categoryKey`). An empty array `[]` (PHP's `json_encode([])`) counts as none. At most 100. |
 | `images` | Up to 20 `{ "url": "https://…" }`. URL-only over REST. |
 

@@ -10,6 +10,7 @@ How the SDK behaves, and why. Read this before you wire it into a production app
 - [Ad status](#ad-status)
 - [Categories, fields and locations](#categories-fields-and-locations)
 - [Your own names: the catalog](#your-own-names-the-catalog)
+- [Store-wide defaults](#store-wide-defaults)
 - [Authentication](#authentication)
 - [When OLX changes its website](#when-olx-changes-its-website)
 
@@ -158,6 +159,28 @@ await olx.sync.upsert('SKU-1', { title, description, price, categoryKey: 'laptop
 ```
 
 `valueMap` matching ignores case, and values that aren't in the map pass through as they are. `npx olx-lb catalog fields 175` prints a ready-made entry for a category with every choice filled in. The CLI and REST service read the same structure from `config/catalog.json`.
+
+## Store-wide defaults
+
+Most stores post everything from one place and add the same line to every ad. Put both in the catalog once, instead of in every product:
+
+```ts
+createOlxClient({
+  accessToken,
+  catalog: {
+    listingDefaults: {
+      locationId: '99', // Beirut > Downtown, for listings that don't give a location
+      descriptionFooter: 'Delivery all over Lebanon',
+    },
+  },
+});
+```
+
+- **`locationId` or `locationKey`** is used when a listing gives neither. A listing's own location always wins. Like any location, it must be an area, not a district.
+- **`descriptionFooter`** is added to the end of every description, after a blank line, unless the description already ends with it. It counts toward the 4,096-character limit.
+- Both are part of the [sync fingerprint](#product-sync): change the footer or the default location and the next `upsert` of each product edits its ad.
+
+The CLI and REST service read the same `listingDefaults` from `config/catalog.json`, so a REST body can leave the location out.
 
 ## Authentication
 
