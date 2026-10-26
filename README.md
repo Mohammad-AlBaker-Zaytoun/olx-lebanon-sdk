@@ -266,6 +266,7 @@ Use **one process per sync store**. Two processes sharing `data/sync-store.json`
 ```bash
 npm run catalog -- categories phone      # category ids by name; use one WITHOUT subcategories
 npm run catalog -- fields 9 175          # the posting form's fields, their choices, and a starting entry
+npm run catalog -- locations metn        # location ids (areas inside a district)
 ```
 
 For each category:
@@ -277,7 +278,13 @@ For each category:
 - `defaults`: values used when a product doesn't give one.
 - `priceLimits`: the category's USD price range from the posting form (`{ "min": 10, "max": 10000 }`). A product outside it fails before anything is sent.
 
-Locations use OLX's numeric location `id`. Every category accepts a district (level 1), for example Beirut `2`, Metn `21`, Baabda `8`, Keserouan `18`, Tripoli `3`, Saida `5`, Zahle `4`, Jbeil `16`. The full list is in `config/catalog.example.json`.
+Locations use OLX's numeric location `id`, and must be an **area inside a district** (level 2 or below): OLX rejects a district such as "Beirut" on its own with "Please select a more specific location". Find yours with:
+
+```bash
+npm run catalog -- locations beirut     # every area whose path contains the text
+```
+
+The location search is the one the OLX posting form uses. It is read with the website's own read-only key, taken from your latest capture (or `OLX_SEARCH_AUTH`); the key is never printed or saved.
 
 Changing `OLX_CONTACT_*` doesn't change existing ads by itself, because contact details aren't part of a product's fingerprint. Sync with `?force=true` to push them to ads that are already up.
 

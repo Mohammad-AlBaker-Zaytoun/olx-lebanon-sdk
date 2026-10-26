@@ -71,8 +71,37 @@ describe('shipped example config', () => {
     const { parseEndpoints } = await import('../src/endpoints.js');
     const { olxLebanonAdapter } = await import('../src/listings/olxLebanon.js');
     const catalog = parseCatalog(JSON.parse(readFileSync('config/catalog.example.json', 'utf8')));
-    expect(catalog.locations.beirut?.olxLocationId).toBe('2');
+    expect(catalog.locations.halba?.olxLocationId).toBe('190');
     const endpoints = parseEndpoints(JSON.parse(readFileSync('config/endpoints.example.json', 'utf8')));
     for (const name of olxLebanonAdapter.requiredEndpoints!) expect(endpoints[name], name).not.toBeNull();
+  });
+});
+
+describe('locations', () => {
+  it('queries every location at the given levels as msearch NDJSON', async () => {
+    const { locationsQuery } = await import('../src/tools/catalogFields.js');
+    const lines = locationsQuery([2, 3]).trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toEqual({ index: 'olx-lb-production-locations-en' });
+    expect(lines[1].query.bool.must).toEqual([{ term: { level: 2 } }]);
+    expect(lines[3].query.bool.must).toEqual([{ term: { level: 3 } }]);
+  });
+
+  it('lists areas below district level with their path, filtered by text', async () => {
+    const { formatLocations, parseLocations } = await import('../src/tools/catalogFields.js');
+    const hier = (d: string) => [{ externalID: '0-1', name: 'Lebanon', level: 0 }, { externalID: 'x', name: d, level: 1 }];
+    const raw = {
+      responses: [
+        { hits: { hits: [
+          { _source: { id: 191, externalID: '2-299', name: 'Qoubaiyat', level: 2, hierarchy: hier('Akkar') } },
+          { _source: { id: 300, externalID: '2-10', name: 'Achrafieh', level: 2, hierarchy: hier('Beirut') } },
+        ] } },
+        { hits: { hits: [] } },
+        { error: { type: 'x' } },
+      ],
+    };
+    const locations = parseLocations(raw);
+    expect(formatLocations(locations)).toEqual(['   300  Beirut > Achrafieh', '   191  Akkar > Qoubaiyat'].sort((a, b) => a.slice(8).localeCompare(b.slice(8))));
+    expect(formatLocations(locations, 'beirut')).toEqual(['   300  Beirut > Achrafieh']);
   });
 });

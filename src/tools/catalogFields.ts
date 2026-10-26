@@ -125,3 +125,47 @@ export function categoryLabel(tree: OlxCategoryNode[], externalId: string): stri
   }
   return undefined;
 }
+
+/** OLX Lebanon's public location index (the posting form's location picker reads it). */
+export const OLX_LB_LOCATIONS_SEARCH = 'https://search-prod.olx-dubizzle.com/olx-lb-production-locations-en/_msearch';
+
+export interface OlxLocation {
+  id: number;
+  externalID: string;
+  name: string;
+  level: number;
+  hierarchy?: Array<{ externalID: string; name: string; level: number }>;
+}
+
+/** The msearch body for every location at the given levels (one query per level). */
+export function locationsQuery(levels: number[]): string {
+  const index = { index: 'olx-lb-production-locations-en' };
+  return (
+    levels
+      .flatMap((level) => [index, { query: { bool: { must: [{ term: { level } }] } }, size: 10000, sort: [{ name: { order: 'asc' } }] }])
+      .map((line) => JSON.stringify(line))
+      .join('\n') + '\n'
+  );
+}
+
+/** Reads the locations out of an msearch response. */
+export function parseLocations(raw: unknown): OlxLocation[] {
+  const responses = (raw as { responses?: Array<{ hits?: { hits?: Array<{ _source?: OlxLocation }> } }> })?.responses ?? [];
+  return responses.flatMap((r) => (r.hits?.hits ?? []).map((h) => h._source).filter((s): s is OlxLocation => !!s && typeof s.id === 'number'));
+}
+
+/**
+ * `id  District > Area` lines, sorted by district then name, optionally filtered by text
+ * (matched against the whole path). Ads need a location below district level.
+ */
+export function formatLocations(locations: OlxLocation[], filter?: string): string[] {
+  const needle = filter?.toLowerCase();
+  const path = (l: OlxLocation) =>
+    [...(l.hierarchy ?? []).filter((h) => h.level >= 1 && h.level < l.level).map((h) => h.name), l.name].join(' > ');
+  return locations
+    .filter((l) => l.level >= 2)
+    .map((l) => ({ l, p: path(l) }))
+    .filter(({ p }) => !needle || p.toLowerCase().includes(needle))
+    .sort((a, b) => a.p.localeCompare(b.p))
+    .map(({ l, p }) => `${String(l.id).padStart(6)}  ${p}${l.level > 2 ? `  (level ${l.level})` : ''}`);
+}
