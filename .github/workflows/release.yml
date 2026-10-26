@@ -45,9 +45,14 @@ jobs:
       - name: Publish
         run: |
           version="$(node -p "require('./package.json').version")"
+          name="$(node -p "require('./package.json').name")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm (published by hand); skipping publish"
+            exit 0
+          fi
           case "$version" in
-            *-*) npm publish --tag next ;;
-            *) npm publish ;;
+            *-*) npm publish --provenance --tag next ;;
+            *) npm publish --provenance ;;
           esac
         env:
           # Only needed if trusted publishing isn't set up on npmjs.com for this repository.

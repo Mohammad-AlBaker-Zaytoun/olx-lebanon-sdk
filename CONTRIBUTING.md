@@ -100,5 +100,5 @@ tests/                Vitest
 1. Update `version` in `package.json` and the heading in `CHANGELOG.md`.
 2. `npm run check && npm run build && npm pack --dry-run`, and look at the file list.
 3. Commit, then tag: `git tag v0.3.0 && git push origin v0.3.0`.
-4. The release workflow checks that the tag matches `package.json`, runs every check, and publishes to npm with provenance. It needs npm trusted publishing set up for this repository (or an `NPM_TOKEN` secret).
+4. The release workflow checks that the tag matches `package.json`, runs every check, and publishes to npm with provenance. It needs npm trusted publishing set up for this repository (or an `NPM_TOKEN` secret). If the version was already published by hand (`npm publish` from a maintainer's machine), it skips publishing and only creates the GitHub release.
 5. Create the GitHub release from the tag, with the changelog section as notes.

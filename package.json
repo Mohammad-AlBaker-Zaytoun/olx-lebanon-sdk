@@ -16,8 +16,7 @@
     "url": "https://github.com/Mohammad-AlBaker-Zaytoun/olx-lebanon-sdk/issues"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "type": "module",
   "main": "dist/index.js",
@@ -58,7 +57,7 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "dev": "tsx watch src/server/index.ts",
     "start": "node dist/server/index.js",
