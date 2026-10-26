@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OlxClient } from '../src/client.js';
 import { parseEndpoints } from '../src/endpoints.js';
-import { AuthError, ReconcileRequiredError, UncertainWriteError } from '../src/errors.js';
+import { AuthError, ImageUploadError, ReconcileRequiredError, UncertainWriteError } from '../src/errors.js';
 import type { Transport } from '../src/http/HttpClient.js';
 import { MemorySessionStore } from '../src/session/storage.js';
 import { MemorySyncStore } from '../src/sync/SyncStore.js';
@@ -90,6 +90,33 @@ describe('OlxClient end to end (mocked OLX)', () => {
     expect((await client.syncStore.get('P-9'))?.syncState).toBe('needs_reconcile');
     await expect(client.sync.upsert('P-9', product)).rejects.toBeInstanceOf(ReconcileRequiredError);
     expect(transport.mock.calls.filter(([u]) => u.endsWith('/api/ads'))).toHaveLength(1);
+  });
+
+  it('does not park the product when only an image upload failed (no ad was sent)', async () => {
+    const { client, transport } = makeClient();
+    transport.mockImplementation(async (url) =>
+      url.startsWith('https://img.olx.com.lb') ? jsonResponse({ error: 'busy' }, 503) : jsonResponse({ id: 'ad-1' }),
+    );
+    await expect(client.sync.upsert('P-8', product)).rejects.toBeInstanceOf(ImageUploadError);
+    expect(await client.syncStore.get('P-8')).toBeUndefined();
+    expect(transport.mock.calls.filter(([u]) => u.endsWith('/api/ads'))).toHaveLength(0);
+
+    // Once the image host recovers, the next sync simply creates the ad.
+    transport.mockImplementation(async (url) =>
+      url.startsWith('https://img.olx.com.lb') ? jsonResponse({ id: 'img-1' }) : jsonResponse({ id: 'ad-1' }, 201),
+    );
+    expect((await client.sync.upsert('P-8', product)).action).toBe('created');
+  });
+
+  it('parks the product when a create is answered with a non-login redirect', async () => {
+    const { client, transport } = makeClient();
+    transport.mockImplementation(async (url) =>
+      url.startsWith('https://img.olx.com.lb')
+        ? jsonResponse({ id: 'img-1' })
+        : new Response(null, { status: 303, headers: { location: '/ad/ID123.html' } }),
+    );
+    await expect(client.sync.upsert('P-7', product)).rejects.toBeInstanceOf(UncertainWriteError);
+    expect((await client.syncStore.get('P-7'))?.syncState).toBe('needs_reconcile');
   });
 
   it('rejects image hosts outside the allowlist before touching OLX', async () => {

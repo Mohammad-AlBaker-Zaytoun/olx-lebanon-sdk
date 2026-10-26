@@ -1,4 +1,4 @@
-import { UncertainWriteError } from '../errors.js';
+import { ImageUploadError, UncertainWriteError } from '../errors.js';
 import type { OlxHttpClient } from '../http/HttpClient.js';
 import type { CatalogMapper } from '../mapping/CatalogMapper.js';
 import type { OlxAdapter } from './adapter.js';
@@ -27,7 +27,7 @@ export class ListingsApi implements ListingsPort {
     const mapped = this.d.mapper.resolve(input);
     // Take the write slot before uploading, so images aren't uploaded long before the ad that uses them.
     await this.d.http.acquireWriteSlot();
-    const imageIds = await this.d.images.uploadAll(input.images ?? []);
+    const imageIds = await this.uploadImages(input);
     const raw = await this.d.http.call('createAd', {
       json: this.d.adapter.buildAdPayload(mapped, imageIds),
       rateLimit: false,
@@ -46,7 +46,7 @@ export class ListingsApi implements ListingsPort {
   async update(adId: string, input: ListingInput): Promise<OlxAd> {
     const mapped = this.d.mapper.resolve(input);
     await this.d.http.acquireWriteSlot();
-    const imageIds = await this.d.images.uploadAll(input.images ?? []);
+    const imageIds = await this.uploadImages(input);
     const raw = await this.d.http.call('updateAd', {
       params: { id: adId },
       json: this.d.adapter.buildAdPayload(mapped, imageIds),
@@ -58,6 +58,22 @@ export class ListingsApi implements ListingsPort {
       return this.d.adapter.parseAd(raw);
     } catch {
       return { id: adId, status: 'unknown', raw };
+    }
+  }
+
+  /**
+   * An image upload with an unknown outcome is not an uncertain *ad*: no ad request has been
+   * sent yet, so at worst an orphan image exists on OLX. Report it as a plain failure so
+   * the product isn't parked for manual reconciliation.
+   */
+  private async uploadImages(input: ListingInput): Promise<string[]> {
+    try {
+      return await this.d.images.uploadAll(input.images ?? []);
+    } catch (err) {
+      if (err instanceof UncertainWriteError) {
+        throw new ImageUploadError(`Image upload failed before the ad was sent: ${err.message}`, { cause: err });
+      }
+      throw err;
     }
   }
 

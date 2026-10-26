@@ -55,6 +55,9 @@ export class UncertainWriteError extends OlxSdkError {
   readonly body?: unknown;
 }
 
+/** An image could not be uploaded; no ad request was sent, so it is safe to retry. */
+export class ImageUploadError extends OlxSdkError {}
+
 /**
  * A product's link to OLX needs a human decision before it can be synced again: an earlier
  * create had an unknown outcome, or the linked ad no longer exists on OLX.

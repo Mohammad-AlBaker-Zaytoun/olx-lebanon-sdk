@@ -133,7 +133,7 @@ Over REST, images are URL-only. By default an image URL must be https and must r
 
 ### Parked products (duplicate protection)
 
-Sometimes OLX may or may not have created an ad: a timeout, a 5xx, or a response the adapter couldn't read. In that case the product is **parked** with `syncState: "needs_reconcile"` instead of being posted again. If OLX says a linked ad no longer exists, the link is marked `"gone"`. Parked products show up under `needsAttention` in `/status`, and further syncs for them fail with `ReconcileRequiredError` until you resolve them:
+Sometimes OLX may or may not have created an ad: a timeout, a 5xx, a redirect that isn't to a login page, or a response the adapter couldn't read. A failed *image* upload doesn't count, because no ad request has been sent at that point, so it simply fails and can be retried. In that case the product is **parked** with `syncState: "needs_reconcile"` instead of being posted again. If OLX says a linked ad no longer exists, the link is marked `"gone"`. Parked products show up under `needsAttention` in `/status`, and further syncs for them fail with `ReconcileRequiredError` until you resolve them:
 
 ```http
 POST /products/P-100/listing/resolve

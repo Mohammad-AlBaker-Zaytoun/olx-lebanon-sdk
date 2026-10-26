@@ -91,6 +91,21 @@ describe('HTTP client hardening', () => {
     expect(invalidate).toHaveBeenCalled();
   });
 
+  it('treats a non-login redirect after a write (post/redirect/get) as uncertain, not "not created"', async () => {
+    const { client, invalidate } = http(
+      async () => new Response(null, { status: 303, headers: { location: '/ad/iphone-15-ID123.html' } }),
+    );
+    await expect(client.call('createAd', { json: {} })).rejects.toBeInstanceOf(UncertainWriteError);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('treats a redirect to a login page after a write as an auth failure', async () => {
+    const { client } = http(
+      async () => new Response(null, { status: 302, headers: { location: 'https://www.olx.com.lb/login?next=/post' } }),
+    );
+    await expect(client.call('createAd', { json: {} })).rejects.toBeInstanceOf(AuthError);
+  });
+
   it('treats an HTML page from a write as an uncertain outcome, not success', async () => {
     const { client } = http(
       async () => new Response('<html>login</html>', { status: 200, headers: { 'content-type': 'text/html' } }),

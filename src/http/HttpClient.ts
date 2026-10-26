@@ -41,6 +41,8 @@ export interface HttpClientOptions {
 }
 
 const MAX_RETRY_DELAY_MS = 60_000;
+/** Redirect targets that mean "you're not logged in" (so a write was definitely not processed). */
+const LOGIN_PATH = /(^|\/)(login|log-in|signin|sign-in|auth|authenticate|account\/login|sso)(\/|$|\.)/i;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** `www.olx.com.lb` → `olx.com.lb`; the session is only valid for that domain and its subdomains. */
@@ -146,13 +148,24 @@ export class OlxHttpClient {
       if (res.status >= 300 && res.status < 400) {
         const location = res.headers.get('location');
         let where = 'another page';
+        let looksLikeLogin = !location;
         if (location) {
           try {
             const loc = new URL(location, url);
             where = loc.origin + loc.pathname;
+            looksLikeLogin = LOGIN_PATH.test(loc.pathname);
           } catch {
             /* keep generic */
           }
+        }
+        if (!isRead && !looksLikeLogin) {
+          // Post/redirect/get: a successful write often answers 303 → the new resource.
+          // We can't tell success from failure here, so it must not be treated as "not created".
+          throw new UncertainWriteError(
+            name,
+            `OLX answered "${name}" with HTTP ${res.status} → ${where}; the write may have succeeded`,
+            { status: res.status },
+          );
         }
         this.o.session.invalidate?.();
         throw new AuthError(
