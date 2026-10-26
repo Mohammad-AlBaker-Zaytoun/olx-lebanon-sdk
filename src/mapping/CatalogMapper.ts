@@ -19,15 +19,15 @@ const CategorySchema = z.object({
   /** Attribute names (in your store's terms) that must be present for this category. */
   requiredAttributes: z.array(z.string()).default([]),
   /** Renames your attribute names to OLX's field names, e.g. { "brand": "make" }. */
-  attributeMap: z.record(z.string()).default({}),
+  attributeMap: z.record(z.string(), z.string()).default({}),
   /** Values applied when the product doesn't provide one. */
-  defaults: z.record(Attr).default({}),
+  defaults: z.record(z.string(), Attr).default({}),
   /**
    * Translates your values to OLX's choice values, per attribute (your attribute names),
    * e.g. { "condition": { "new": "1", "used": "2" } }. Matching ignores case and surrounding
    * spaces. Unlisted values are sent unchanged.
    */
-  valueMap: z.record(z.record(Attr)).default({}),
+  valueMap: z.record(z.string(), z.record(z.string(), Attr)).default({}),
   /** The category's price range in USD, from the posting form; checked before posting. */
   priceLimits: z.object({ min: z.number().optional(), max: z.number().optional() }).optional(),
 });
@@ -48,8 +48,8 @@ export const CatalogSchema = z.object({
       maxImages: z.number().int().positive().optional(),
     })
     .default({}),
-  categories: z.record(CategorySchema).default({}),
-  locations: z.record(LocationSchema).default({}),
+  categories: z.record(z.string(), CategorySchema).default({}),
+  locations: z.record(z.string(), LocationSchema).default({}),
 });
 
 export type Catalog = z.infer<typeof CatalogSchema>;

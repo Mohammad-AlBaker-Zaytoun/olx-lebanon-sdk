@@ -286,3 +286,10 @@ describe('checks before anything is sent', () => {
     await expect(up.upload({ path: '/nonexistent/photo.jpg' })).rejects.toMatchObject({ code: 'image_upload_failed', message: expect.stringMatching(/photo\.jpg.*file not found/) });
   });
 });
+
+describe('configuration with malformed URLs', () => {
+  it('reports them as invalid configuration instead of crashing', () => {
+    expect(() => sdk.loadConfig({ WEBHOOK_URL: 'not a url', WEBHOOK_SECRET: 's'.repeat(20) })).toThrow(/Invalid configuration[\s\S]*WEBHOOK_URL/);
+    expect(() => sdk.loadConfig({ OLX_BASE_URL: '::::' })).toThrow(/Invalid configuration[\s\S]*OLX_BASE_URL/);
+  });
+});

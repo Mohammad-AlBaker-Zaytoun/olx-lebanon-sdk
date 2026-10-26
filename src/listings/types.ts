@@ -94,7 +94,7 @@ const OlxId = z.union([z.string().trim().regex(/^\d+$/, 'must be a numeric OLX i
 /** PHP's json_encode turns an empty associative array into `[]`; treat it as `{}`. */
 const Attributes = z.preprocess(
   (v) => (Array.isArray(v) && v.length === 0 ? {} : v),
-  z.record(z.union([z.string(), z.number(), z.boolean()])),
+  z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
 );
 
 export const RestListingSchema = z.object({
@@ -110,13 +110,19 @@ export const RestListingSchema = z.object({
   images: z
     .array(
       z.object({
-        url: z
-          .string()
-          .url()
-          .refine((u) => {
-            const url = new URL(u);
-            return !url.username && !url.password;
-          }, 'image URLs must not contain credentials'),
+        url: z.string().superRefine((u, ctx) => {
+          let url: URL;
+          try {
+            url = new URL(u);
+          } catch {
+            ctx.addIssue({ code: 'custom', message: 'must be a valid URL' });
+            return;
+          }
+          if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+            ctx.addIssue({ code: 'custom', message: 'image URLs must use https (or http for a host in OLX_IMAGE_HOSTS)' });
+          }
+          if (url.username || url.password) ctx.addIssue({ code: 'custom', message: 'image URLs must not contain credentials' });
+        }),
       }),
     )
     .max(20)

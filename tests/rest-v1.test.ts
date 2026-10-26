@@ -195,3 +195,32 @@ describe('internal errors', () => {
     expect(error).toHaveBeenCalledWith('Request failed', expect.objectContaining({ requestId: 'req-7', error: 'database is down' }));
   });
 });
+
+describe('malformed listing bodies', () => {
+  const bad: unknown[] = [
+    { ...listing, images: [{ url: 'not a url' }] },
+    { ...listing, images: [{ url: 'ftp://files.example/a.jpg' }] },
+    { ...listing, images: [{ url: 'https://user:pass@cdn.example/a.jpg' }] },
+    { ...listing, images: [{ path: '/etc/passwd' }] },
+    { ...listing, images: Array.from({ length: 21 }, () => ({ url: 'https://cdn.example/a.jpg' })) },
+    { ...listing, images: 'https://cdn.example/a.jpg' },
+    { ...listing, price: 'free' },
+    { ...listing, price: -1 },
+    { ...listing, attributes: [1, 2] },
+    { ...listing, attributes: { make: { nested: true } } },
+    { ...listing, categoryId: '175', categoryKey: 'laptops' },
+    { ...listing, locationId: 0 },
+    { ...listing, title: '   ' },
+    [],
+    'text',
+    null,
+    42,
+  ];
+
+  it.each(bad.map((b) => [JSON.stringify(b).slice(0, 60), b]))('%s → 400 invalid_listing, never 500', async (_label, body) => {
+    const { app } = server();
+    const res = await app.inject({ method: 'PUT', url: '/v1/products/P1/listing', headers: { ...auth, 'content-type': 'application/json' }, payload: JSON.stringify(body) });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: { code: expect.stringMatching(/^(invalid_listing|bad_request)$/) } });
+  });
+});

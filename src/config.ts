@@ -15,12 +15,21 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 export const isSecureOrLocal = (url: URL): boolean =>
   url.protocol === 'https:' || (url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname));
 
+/** For refinements: zod runs every check even after `.url()` fails, so parsing must not throw. */
+const secureOrLocalUrl = (u: string): boolean => {
+  try {
+    return isSecureOrLocal(new URL(u));
+  } catch {
+    return false;
+  }
+};
+
 const EnvSchema = z.object({
   OLX_BASE_URL: z
     .string()
     .url()
     .refine(
-      (u) => isSecureOrLocal(new URL(u)),
+      secureOrLocalUrl,
       'OLX_BASE_URL must use https (plain http is only allowed for localhost, for testing)',
     )
     .default('https://www.olx.com.lb'),
@@ -49,7 +58,7 @@ const EnvSchema = z.object({
   WEBHOOK_URL: z
     .string()
     .url()
-    .refine((u) => isSecureOrLocal(new URL(u)), 'WEBHOOK_URL must use https (plain http is only allowed for localhost)')
+    .refine(secureOrLocalUrl, 'WEBHOOK_URL must use https (plain http is only allowed for localhost)')
     .optional(),
   WEBHOOK_SECRET: z.string().min(16, 'WEBHOOK_SECRET must be at least 16 characters').optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
