@@ -29,6 +29,14 @@ Only requests to the OLX domain are recorded, so a Google or Facebook sign-in is
 
 ## 2. Identify each operation
 
+To see request and response bodies without opening the HAR, run:
+
+```bash
+npm run capture:shapes
+```
+
+It reads the latest capture and writes `<name>.shapes.txt`: every API call with its query parameter names, request header names, and bodies whose personal values (free text, names, phone numbers, emails, tokens, long ids) are replaced by descriptions such as `<text 42 chars>`. For the `authorization` header it shows only the scheme and, for a JWT, the issuer, lifetime and claim names. Public catalog responses (categories, category fields, location search) are saved verbatim under `<name>.public/`. Skim both before you share them.
+
 In the summary, or in the DevTools Network tab with the HAR loaded, find:
 
 | SDK endpoint | What to look for |

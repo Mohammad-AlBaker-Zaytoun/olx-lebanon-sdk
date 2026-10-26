@@ -31,6 +31,7 @@
     "start": "node dist/server/index.js",
     "login": "tsx scripts/login.ts",
     "capture": "tsx scripts/capture-flow.ts",
+    "capture:shapes": "tsx scripts/har-shapes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

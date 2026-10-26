@@ -62,7 +62,8 @@ export function summarizeHar(har: HarLike, hostFilter?: (host: string) => boolea
       continue;
     }
     if (hostFilter && !hostFilter(url.hostname)) continue;
-    if (STATIC.test(url.pathname)) continue;
+    // Static-looking paths are skipped for reads only: a PUT to `…/photo.jpg` is an upload.
+    if (request.method === 'GET' && STATIC.test(url.pathname)) continue;
     const responseType = response.content?.mimeType;
     const isApi = request.method !== 'GET' || (responseType ?? '').includes('json');
     if (!isApi) continue;
