@@ -36,6 +36,12 @@ describe('catalog helpers', () => {
     expect(postableFields(fields).map((f) => f.attribute)).toEqual(['price', 'price_type', 'make', 'new_used']);
   });
 
+  it('lists every choice by default', () => {
+    const many: OlxField = { attribute: 'make', name: 'Brand', valueType: 'enum', isMandatory: true, choices: Array.from({ length: 60 }, (_, i) => ({ value: String(i), label: `B${i}` })) };
+    expect(describeFields([many])).toContain('"59" = B59');
+    expect(describeFields([many])).not.toContain('more');
+  });
+
   it('describes fields with their choices, including grouped choices', () => {
     const text = describeFields(fields);
     expect(text).toContain('REQUIRED  make  [enum]  "Brand"');
@@ -50,8 +56,10 @@ describe('catalog helpers', () => {
       olxCategoryId: '9',
       requiredAttributes: ['make'],
       attributeMap: {},
-      valueMap: {},
+      // Every choice field, label → OLX value (grouped choices flattened); price fields left out.
+      valueMap: { make: { Apple: '1', Samsung: '2' }, new_used: { New: 'new' } },
       defaults: {},
+      priceLimits: { max: 50000 },
     });
   });
 });

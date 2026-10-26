@@ -9,7 +9,7 @@ import {
   UncertainWriteError,
 } from '../errors.js';
 import type { ListingsPort } from '../listings/ListingsApi.js';
-import type { ImageSource, ListingInput, OlxAd } from '../listings/types.js';
+import type { AdStatus, ImageSource, ListingInput, OlxAd } from '../listings/types.js';
 import { silentLogger, type Logger } from '../logger.js';
 import type { MappedListing } from '../mapping/CatalogMapper.js';
 import type { SyncRecord, SyncStore } from './SyncStore.js';
@@ -195,7 +195,7 @@ export class SyncService {
     };
     await this.d.store.set(record);
     this.logger.info('Updated OLX ad', { productId, adId: existing.adId });
-    return { action: 'updated', record, ad };
+    return { action: 'updated', record: await this.withLookedUpStatus(record, ad), ad };
   }
 
   private async create(productId: string, input: ListingInput, contentHash: string): Promise<UpsertResult> {
@@ -272,7 +272,35 @@ export class SyncService {
       );
     }
     this.logger.info('Created OLX ad', { productId, adId: ad.id });
-    return { action: 'created', record, ad };
+    return { action: 'created', record: await this.withLookedUpStatus(record, ad), ad };
+  }
+
+  /**
+   * After the result is saved: when the write's response had no state (OLX's post-ad gives
+   * ids only), ask OLX for it, so an ad that went straight to `limited` is recorded as such.
+   * Best effort and only after saving, so a slow or failing lookup can't lose a create.
+   */
+  private async withLookedUpStatus(record: SyncRecord, ad: OlxAd): Promise<SyncRecord> {
+    if (ad.status !== 'unknown' || !this.d.listings.lookupStatus) return record;
+    let status: AdStatus | undefined;
+    try {
+      status = await this.d.listings.lookupStatus(record.adId);
+    } catch (err) {
+      this.logger.warn('Could not look up the ad state', { productId: record.productId, error: (err as Error).message });
+      return record;
+    }
+    if (!status || status === 'unknown' || status === record.status) return record;
+    const updated = { ...record, status };
+    try {
+      await this.d.store.set(updated);
+    } catch (err) {
+      this.logger.warn('Could not save the looked-up ad state', { productId: record.productId, error: (err as Error).message });
+      return record;
+    }
+    if (status === 'limited') {
+      this.logger.warn('OLX ad is limited: it needs a paid package to be visible', { productId: record.productId, adId: record.adId });
+    }
+    return updated;
   }
 
   private async doRemove(productId: string): Promise<RemoveResult> {

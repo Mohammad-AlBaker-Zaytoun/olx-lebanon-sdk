@@ -1,6 +1,6 @@
 {
   "name": "olx-lebanon-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Unofficial TypeScript SDK and local REST service for posting and managing your own listings on OLX Lebanon.",
   "private": true,
   "type": "module",

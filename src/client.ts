@@ -89,7 +89,15 @@ export class OlxClient {
       resolveHost: opts.resolveHost,
       ...opts.images,
     });
-    this.listings = new ListingsApi({ http: this.http, mapper: this.mapper, adapter, images, contact: opts.contact, logger });
+    this.listings = new ListingsApi({
+      http: this.http,
+      mapper: this.mapper,
+      adapter,
+      images,
+      contact: opts.contact,
+      session: this.session,
+      logger,
+    });
     this.syncStore = opts.syncStore;
     this.sync = new SyncService({ listings: this.listings, store: opts.syncStore, mapper: this.mapper, logger });
   }

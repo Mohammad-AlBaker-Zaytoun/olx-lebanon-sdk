@@ -50,7 +50,9 @@ The endpoints and wire format are mapped from a capture of the OLX Lebanon web a
 
 ### Free-ad limits
 
-OLX Lebanon gives each account a limited number of free ads per category. An ad posted past that limit is created but stays hidden in the `limited` state until you buy a package on OLX. The SDK reports it as `status: "limited"` in the sync record, `/jobs` and the webhook, so your store can tell which products aren't live yet. It never buys packages for you.
+OLX Lebanon gives each account a limited number of free ads per category. An ad posted past that limit is created but stays hidden in the `limited` state until you buy a package on OLX. The SDK never buys packages for you.
+
+OLX's post-ad answer has no state, so right after a create (or an edit without one), and only after the link is saved, the SDK checks the newest pages of "My ads" once. If it finds the ad there, `status` in the sync record, `/jobs` and the webhook becomes `limited`, `pending_review` or `active`. If the check fails, `status` stays `unknown` and the create still counts as done. The status isn't refreshed later, for example after you buy a package: the next edit of that product reads it again.
 
 ## Quick start
 
@@ -271,10 +273,13 @@ For each category:
 - `olxCategoryId`: the category id (OLX's `externalID`).
 - `requiredAttributes`: the fields the form requires, in your store's names. Price and price type are filled from the product's `price` and `currency`.
 - `attributeMap`: renames your attribute names to OLX's, e.g. `{ "condition": "new_used" }`.
-- `valueMap`: translates your values to OLX's choice values, e.g. `{ "condition": { "new": "1", "used": "2" } }`. Unlisted values are sent as they are.
+- `valueMap`: translates your values to OLX's choice values, e.g. `{ "condition": { "new": "1", "used": "2" } }`. Matching ignores case and surrounding spaces. Unlisted values are sent as they are. `npm run catalog -- fields` prints a `valueMap` with every choice, keyed by OLX's labels.
 - `defaults`: values used when a product doesn't give one.
+- `priceLimits`: the category's USD price range from the posting form (`{ "min": 10, "max": 10000 }`). A product outside it fails before anything is sent.
 
 Locations use OLX's numeric location `id`. Every category accepts a district (level 1), for example Beirut `2`, Metn `21`, Baabda `8`, Keserouan `18`, Tripoli `3`, Saida `5`, Zahle `4`, Jbeil `16`. The full list is in `config/catalog.example.json`.
+
+Changing `OLX_CONTACT_*` doesn't change existing ads by itself, because contact details aren't part of a product's fingerprint. Sync with `?force=true` to push them to ads that are already up.
 
 ## Configuration
 

@@ -21,6 +21,10 @@ export interface CallOptions {
   rateLimit?: boolean;
   /** Awaited right before the request is first sent; if it throws, nothing is sent. */
   beforeSend?: () => Promise<void>;
+  /** Overrides the client's read retries for this call (best-effort lookups use 0). */
+  retries?: number;
+  /** Overrides the client's timeout for this call. */
+  timeoutMs?: number;
 }
 
 export interface HttpClientOptions {
@@ -114,10 +118,10 @@ export class OlxHttpClient {
       body = opts.form; // fetch sets the multipart boundary itself
     }
 
-    const maxAttempts = isRead ? 1 + (this.o.maxReadRetries ?? 2) : 1;
+    const maxAttempts = isRead ? 1 + (opts.retries ?? this.o.maxReadRetries ?? 2) : 1;
     const baseDelay = this.o.retryBaseMs ?? 1_000;
     const maxDelay = this.o.maxRetryDelayMs ?? MAX_RETRY_DELAY_MS;
-    const timeoutMs = this.o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const timeoutMs = opts.timeoutMs ?? this.o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     for (let attempt = 1; ; attempt++) {
       if (attempt === 1 && opts.beforeSend) await opts.beforeSend();
@@ -240,14 +244,14 @@ export class OlxHttpClient {
 
   /**
    * PUTs a file to a one-time signed upload URL (e.g. S3). The session is never attached,
-   * redirects are not followed, and only hosts accepted by `isAllowedHost` are contacted.
+   * redirects are not followed, and only URLs accepted by `isAllowedUrl` are contacted.
    * The URL's query (the signature) is kept out of logs and errors.
    */
   async putToSignedUrl(
     rawUrl: string,
     data: Uint8Array,
     contentType: string,
-    isAllowedHost: (host: string) => boolean,
+    isAllowedUrl: (url: URL) => boolean,
   ): Promise<void> {
     let url: URL;
     try {
@@ -258,8 +262,8 @@ export class OlxHttpClient {
     if (url.protocol !== 'https:' || url.username || url.password) {
       throw new OlxSdkError('OLX returned an upload URL that is not plain https; refusing to upload');
     }
-    if (!isAllowedHost(url.hostname.toLowerCase())) {
-      throw new OlxSdkError(`OLX returned an upload URL on an unexpected host (${url.hostname}); refusing to upload`);
+    if (!isAllowedUrl(url)) {
+      throw new OlxSdkError(`OLX returned an upload URL on an unexpected host or path (${url.hostname}); refusing to upload`);
     }
     const name = 'signedUpload';
     const started = Date.now();

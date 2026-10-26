@@ -8,7 +8,9 @@ import { imageSize } from '../src/listings/imageSize.js';
 import { OLX_LB_IMAGE_BASE, olxLebanonAdapter, olxLebanonBearer } from '../src/listings/olxLebanon.js';
 import { parseCatalog, type MappedListing } from '../src/mapping/CatalogMapper.js';
 import { preferCapturedHeader } from '../src/session/SessionManager.js';
-import { MemorySessionStore, type SessionData } from '../src/session/storage.js';
+import { ImageUploadError, OlxHttpError } from '../src/errors.js';
+import { MemoryRequestLog } from '../src/logger.js';
+import { MemorySessionStore, type SessionData, type SessionStore } from '../src/session/storage.js';
 import { MemorySyncStore } from '../src/sync/SyncStore.js';
 import { fakeClock, jsonResponse } from './helpers.js';
 
@@ -40,18 +42,19 @@ const listing: MappedListing = {
   attributes: { species: '2', age_group: '2' },
 };
 
+const photo = { id: 'a-b', url: OLX_LB_IMAGE_BASE + 'a-b', width: 2000, height: 1333 };
+
 const ctx = {
   mode: 'create' as const,
   account: { externalId: USER, name: 'Store', phone: '+96170000000' },
   contact: { name: 'Store', phone: '+96170000000', method: 'phone_and_chat' },
+  images: [photo],
 };
-
-const photo = { id: 'a-b', url: OLX_LB_IMAGE_BASE + 'a-b', width: 2000, height: 1333 };
 
 // ------------------------------------------------------------------ adapter
 describe('olxLebanonAdapter: request bodies', () => {
   it('builds the post-ad body exactly like the web app', () => {
-    expect(olxLebanonAdapter.buildAdPayload(listing, [photo], ctx)).toEqual({
+    expect(olxLebanonAdapter.buildAdPayload(listing, ['a-b'], ctx)).toEqual({
       extra_fields: { species: '2', age_group: '2', price: 111, price_type: 'price' },
       contact_person: { name: 'Store', mobile_phone_number: '+96170000000', contact_method: 'phone_and_chat' },
       area: 0,
@@ -73,20 +76,20 @@ describe('olxLebanonAdapter: request bodies', () => {
     const body = olxLebanonAdapter.buildAdPayload(
       { ...listing, currency: 'LBP', price: 9_000_000, attributes: { price_type: 'arranged', price: 5 } },
       [],
-      ctx,
+      { ...ctx, images: [] },
     ) as { extra_fields: Record<string, unknown> };
     expect(body.extra_fields).toEqual({ price_type: 'arranged', secondary_price: 9_000_000 });
   });
 
   it('builds the edit-ad body (no account id, state or source)', () => {
-    const body = olxLebanonAdapter.buildAdPayload(listing, [photo], { ...ctx, mode: 'update', account: undefined });
+    const body = olxLebanonAdapter.buildAdPayload(listing, ['a-b'], { ...ctx, mode: 'update', account: undefined });
     expect(body).toMatchObject({ order_photos: [], images: [expect.objectContaining({ image_name: 'a-b' })], category_id: '219' });
     expect(body).not.toHaveProperty('user_external_id');
     expect(body).not.toHaveProperty('state');
   });
 
   it('refuses to create without the account id', () => {
-    expect(() => olxLebanonAdapter.buildAdPayload(listing, [], { ...ctx, account: undefined })).toThrow(/account id is unknown/);
+    expect(() => olxLebanonAdapter.buildAdPayload(listing, [], { ...ctx, images: [], account: undefined })).toThrow(/account id is unknown/);
   });
 });
 
@@ -151,13 +154,27 @@ describe('olxLebanonAdapter: photo uploads', () => {
     expect(flow.toUploadedImage('n-1', { ...info, uploadUrl: `${s3}other.jpg` }).url).toBe(OLX_LB_IMAGE_BASE + 'n-1.jpg');
   });
 
-  it('only uploads to S3', () => {
-    for (const ok of ['olx-lb-prod.s3.eu-central-1.amazonaws.com', 's3.eu-central-1.amazonaws.com', 'b.s3-eu-west-1.amazonaws.com']) {
-      expect(flow.isAllowedUploadHost(ok)).toBe(true);
+  it("only uploads to OLX's own bucket and folder", () => {
+    const allowed = (u: string) => flow.isAllowedUploadUrl(new URL(u));
+    expect(allowed('https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/a-b.jpg?X-Amz-Signature=x')).toBe(true);
+    for (const bad of [
+      'https://attacker-bucket.s3.us-east-1.amazonaws.com/temp/x.jpg', // another account's bucket
+      'https://s3.eu-central-1.amazonaws.com/olx-lb-prod/temp/x.jpg', // path-style
+      'https://olx-lb-prod.s3.eu-central-1.amazonaws.com/other/x.jpg', // wrong folder
+      'https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/../x.jpg',
+      'https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/%2e%2e%2fx.jpg',
+      'https://olx-lb-prod.s3.eu-central-1.amazonaws.com:8443/temp/x.jpg',
+      'http://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/x.jpg',
+      'https://olx-lb-prod.s3.eu-central-1.amazonaws.com.evil.com/temp/x.jpg',
+    ]) {
+      expect(allowed(bad), bad).toBe(false);
     }
-    for (const bad of ['evil.com', 's3.amazonaws.com.evil.com', 'amazonaws.com', 'olx-lb-prod.s3.eu-central-1.amazonaws.co']) {
-      expect(flow.isAllowedUploadHost(bad)).toBe(false);
-    }
+  });
+
+  it('knows when my-ads has another page', () => {
+    expect(olxLebanonAdapter.hasNextPage!({ next: 'https://api/…?page=2' })).toBe(true);
+    expect(olxLebanonAdapter.hasNextPage!({ next: null })).toBe(false);
+    expect(olxLebanonAdapter.hasNextPage!({})).toBe(false);
   });
 });
 
@@ -201,6 +218,15 @@ describe('imageSize', () => {
     expect(imageSize(webp)).toEqual({ width: 800, height: 600, type: 'image/webp' });
   });
 
+  it('swaps width and height for a JPEG rotated by EXIF (orientation 6), like a browser', () => {
+    // APP1 "Exif\0\0" + big-endian TIFF with one IFD0 entry: Orientation (0x0112) = 6.
+    const tiff = [0x4d, 0x4d, 0x00, 0x2a, 0, 0, 0, 8, 0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0, 0, 0, 1, 0x00, 0x06, 0, 0, 0, 0, 0, 0];
+    const app1 = [0xff, 0xe1, 0x00, 2 + 6 + tiff.length, ...[...'Exif'].map((c) => c.charCodeAt(0)), 0, 0, ...tiff];
+    const sof = [0xff, 0xc0, 0x00, 0x11, 0x08, 0x0b, 0xb8, 0x0f, 0xa0, 0x03, 0, 0, 0]; // 4000 x 3000
+    const jpeg = new Uint8Array([0xff, 0xd8, ...app1, ...sof]);
+    expect(imageSize(jpeg)).toEqual({ width: 3000, height: 4000, type: 'image/jpeg' });
+  });
+
   it('returns undefined for anything else', () => {
     expect(imageSize(new Uint8Array([1, 2, 3]))).toBeUndefined();
     expect(imageSize(new TextEncoder().encode('<html>'))).toBeUndefined();
@@ -219,6 +245,20 @@ describe('catalog valueMap', () => {
     const base = { title: 't', description: 'd', price: 1, categoryKey: 'phones', locationKey: 'beirut' };
     expect(mapper.resolve({ ...base, attributes: { condition: 'used', color: 'red' } }).attributes).toEqual({ new_used: '2', color: 'red' });
     expect(mapper.resolve({ ...base, attributes: { condition: 'refurbished' } }).attributes).toEqual({ new_used: 'refurbished' });
+    // Case and surrounding spaces don't matter.
+    expect(mapper.resolve({ ...base, attributes: { condition: ' USED ' } }).attributes).toEqual({ new_used: '2' });
+  });
+
+  it("checks the category's USD price range before posting", async () => {
+    const { CatalogMapper } = await import('../src/mapping/CatalogMapper.js');
+    const mapper = new CatalogMapper(
+      parseCatalog({ categories: { phones: { olxCategoryId: '9', priceLimits: { min: 10, max: 10000 } } }, locations: { b: { olxLocationId: '2' } } }),
+    );
+    const base = { title: 't', description: 'd', categoryKey: 'phones', locationKey: 'b' };
+    expect(() => mapper.resolve({ ...base, price: 5 })).toThrow(/below OLX's minimum of 10/);
+    expect(() => mapper.resolve({ ...base, price: 20000 })).toThrow(/above OLX's maximum of 10000/);
+    expect(mapper.resolve({ ...base, price: 10 }).price).toBe(10);
+    expect(mapper.resolve({ ...base, price: 5_000_000, currency: 'LBP' }).price).toBe(5_000_000); // USD range only
   });
 });
 
@@ -247,24 +287,52 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     images: [{ url: 'https://cdn.zaytoon.test/budgie.png' }],
   };
 
-  function setup(opts: { uploadUrl?: string; state?: string; imageBytes?: Uint8Array } = {}) {
+  interface SetupOptions {
+    uploadUrl?: string;
+    state?: string;
+    imageBytes?: Uint8Array;
+    /** S3's answer to the PUT: an HTTP status, or 'network' for a dropped connection. */
+    s3?: number | 'network';
+    /** How many /user reads fail with HTTP 503 before one succeeds. */
+    userFailures?: number;
+    /** my-ads: a page that never contains the ad (with `next` set), or a failure. */
+    myAds?: 'ok' | 'not-listed' | 'error';
+    sessionStore?: SessionStore;
+  }
+
+  function setup(opts: SetupOptions = {}) {
     const calls: Array<{ url: string; method: string; headers: Record<string, string>; body: unknown }> = [];
+    const syncStore = new MemorySyncStore();
+    const requestLog = new MemoryRequestLog();
+    let userFailures = opts.userFailures ?? 0;
+    let userExternalId = USER;
+    const seenAtLookup: Array<string | undefined> = [];
     const transport = vi.fn<Transport>(async (url, init) => {
       const headers = init.headers as Record<string, string>;
       calls.push({ url, method: String(init.method), headers, body: init.body });
       const u = new URL(url);
       if (u.pathname === '/api/v1/user') {
-        return jsonResponse({ status: 'OK', data: { externalID: USER, name: { ar: 'متجر زيتون', en: 'Zaytoon Store' }, phoneNumber: '+96170000000' } });
+        if (userFailures-- > 0) return new Response('busy', { status: 503 });
+        return jsonResponse({ status: 'OK', data: { externalID: userExternalId, name: { ar: 'متجر زيتون', en: 'Zaytoon Store' }, phoneNumber: '+96170000000' } });
       }
       if (u.pathname === '/api/images/get-signed-url/') {
         const name = u.searchParams.get('imageName')!;
         return jsonResponse({ status: 'OK', data: { url: opts.uploadUrl ?? `https://olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/${name}.jpg?X-Amz-Signature=s3cr3t`, fields: { Host: ['x'] } } });
       }
-      if (u.hostname.endsWith('amazonaws.com')) return new Response(null, { status: 200 });
+      if (u.hostname.endsWith('amazonaws.com')) {
+        if (opts.s3 === 'network') throw new TypeError('fetch failed');
+        return new Response(null, { status: opts.s3 ?? 200 });
+      }
       if (u.pathname === '/api/v1/post-ad') {
         return jsonResponse({ status: 'OK', data: { ad: { externalID: AD, id: 5_000_001, categoryID: 25 }, next_page: { post: true } } });
       }
       if (u.pathname === '/api/v1/user/my-ads') {
+        // What the store holds while the lookup runs: the link must already be saved.
+        seenAtLookup.push((await syncStore.get('P-1'))?.adId);
+        if (opts.myAds === 'error') return new Response('down', { status: 503 });
+        if (opts.myAds === 'not-listed') {
+          return jsonResponse({ count: 99, next: 'https://api-prod.olx-dubizzle.com/api/v1/user/my-ads?page=next', results: [{ id: 1, externalID: '117999999', state: 'active' }] });
+        }
         return jsonResponse({ count: 1, next: null, results: [{ id: 5_000_001, externalID: AD, state: opts.state ?? 'limited', title: 'Budgie pair' }] });
       }
       if (u.pathname === `/api/v1/edit-ad/${AD}`) {
@@ -278,16 +346,109 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
       baseUrl: 'https://www.olx.com.lb',
       endpoints,
       catalog,
-      sessionStore: new MemorySessionStore(session),
-      syncStore: new MemorySyncStore(),
+      sessionStore: opts.sessionStore ?? new MemorySessionStore(session),
+      syncStore,
+      requestLog,
       writeLimits: { minIntervalMs: 0, jitterMs: 0, maxPerHour: 100 },
       clock: fakeClock(),
       transport,
       imageFetch,
       allowedImageHosts: ['zaytoon.test'],
     });
-    return { client, calls };
+    return {
+      client,
+      calls,
+      requestLog,
+      seenAtLookup,
+      setUserExternalId: (id: string) => {
+        userExternalId = id;
+      },
+    };
   }
+
+  const pathsOf = (calls: Array<{ url: string; method: string }>) => calls.map((c) => `${c.method} ${new URL(c.url).pathname}`);
+
+  it('saves the link BEFORE looking up the state, and records limited', async () => {
+    const { client, seenAtLookup } = setup();
+    const result = await client.sync.upsert('P-1', product);
+    expect(seenAtLookup).toEqual([AD]);
+    expect(result.record.status).toBe('limited');
+    expect((await client.syncStore.get('P-1'))?.status).toBe('limited');
+  });
+
+  it('a failed state lookup does not fail the create: one try, no retries', async () => {
+    const { client, calls } = setup({ myAds: 'error' });
+    const result = await client.sync.upsert('P-1', product);
+    expect(result).toMatchObject({ action: 'created', record: { adId: AD, status: 'unknown' } });
+    expect((await client.syncStore.get('P-1'))?.syncState).toBeUndefined();
+    expect(pathsOf(calls).filter((p) => p.endsWith('/my-ads'))).toHaveLength(1);
+  });
+
+  it('pages my-ads at most 3 times, following `next`', async () => {
+    const { client, calls } = setup({ myAds: 'not-listed' });
+    const result = await client.sync.upsert('P-1', product);
+    expect(result.record.status).toBe('unknown');
+    const lookups = calls.filter((c) => c.url.includes('/my-ads')).map((c) => new URL(c.url).searchParams);
+    expect(lookups.map((q) => q.get('page'))).toEqual(['1', '2', '3']);
+    expect(lookups.every((q) => q.get('per_page') === '20')).toBe(true);
+  });
+
+  it('uses exactly one write slot for signing, uploading and posting', async () => {
+    const { client } = setup();
+    await client.sync.upsert('P-1', product);
+    expect(client.limiter.recentCount).toBe(1);
+  });
+
+  for (const s3 of [500, 403, 'network'] as const) {
+    it(`S3 answering ${s3}: no ad sent, slot refunded, product not parked`, async () => {
+      const { client, calls } = setup({ s3 });
+      await expect(client.sync.upsert('P-1', product)).rejects.toBeInstanceOf(s3 === 403 ? OlxHttpError : ImageUploadError);
+      expect(pathsOf(calls).some((p) => p.endsWith('/post-ad'))).toBe(false);
+      expect(client.limiter.recentCount).toBe(0);
+      expect(await client.syncStore.get('P-1')).toBeUndefined();
+    });
+  }
+
+  it('keeps the S3 signature and image name query out of the request log', async () => {
+    const { client, requestLog } = setup();
+    await client.sync.upsert('P-1', product);
+    const logged = JSON.stringify(requestLog.entries);
+    expect(logged).toContain('signedUpload');
+    expect(logged).not.toContain('s3cr3t');
+    expect(logged).not.toContain('X-Amz');
+    expect(logged).not.toContain('imageName');
+  });
+
+  it('a failed account read is not cached: the next sync reads it again', async () => {
+    const { client, calls } = setup({ userFailures: 3 }); // 1 try + 2 read retries all fail
+    await expect(client.sync.upsert('P-1', product)).rejects.toThrow();
+    expect(pathsOf(calls).some((p) => p.endsWith('/post-ad') || p.includes('get-signed-url'))).toBe(false);
+    const result = await client.sync.upsert('P-1', product);
+    expect(result.action).toBe('created');
+  });
+
+  it('reads the account again after a new login', async () => {
+    let version = 'v1';
+    let data: SessionData = session;
+    const store: SessionStore = {
+      load: async () => data,
+      save: async (d) => {
+        data = d;
+        version = d.savedAt;
+      },
+      clear: async () => {},
+      version: async () => version,
+    };
+    const { client, calls, setUserExternalId } = setup({ sessionStore: store });
+    await client.sync.upsert('P-1', product);
+    const OTHER = '99999999-aaaa-4bbb-8ccc-dddddddddddd';
+    setUserExternalId(OTHER);
+    await store.save({ ...session, savedAt: '2027-01-01T00:00:00.000Z' }); // `npm run login`
+    await client.sync.upsert('P-2', product);
+    expect(pathsOf(calls).filter((p) => p === 'GET /api/v1/user')).toHaveLength(2);
+    const posts = calls.filter((c) => c.url.endsWith('/post-ad')).map((c) => JSON.parse(String(c.body)) as { user_external_id: string });
+    expect(posts.map((p) => p.user_external_id)).toEqual([USER, OTHER]);
+  });
 
   it('creates the ad: account, signed URL, S3 upload, post-ad, then reads the state', async () => {
     const { client, calls } = setup();
@@ -349,13 +510,16 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/api/v1/user'))).toHaveLength(1); // account read once
   });
 
-  it('refuses an upload URL outside S3: nothing uploaded, no ad sent, product not parked', async () => {
-    const { client, calls } = setup({ uploadUrl: 'https://evil.example/steal?x=1' });
-    await expect(client.sync.upsert('P-1', product)).rejects.toThrow(/unexpected host/);
-    expect(calls.some((c) => c.url.startsWith('https://evil.example'))).toBe(false);
-    expect(calls.some((c) => c.url.endsWith('/post-ad'))).toBe(false);
-    expect((await client.syncStore.get('P-1'))?.syncState).toBeUndefined();
-  });
+  for (const uploadUrl of ['https://evil.example/steal?x=1', 'https://attacker-bucket.s3.us-east-1.amazonaws.com/temp/x.jpg?sig=1']) {
+    it(`refuses an upload URL outside OLX's bucket (${new URL(uploadUrl).host}): nothing uploaded, no ad sent, not parked`, async () => {
+      const { client, calls } = setup({ uploadUrl });
+      await expect(client.sync.upsert('P-1', product)).rejects.toThrow(/unexpected host or path/);
+      expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+      expect(calls.some((c) => c.url.endsWith('/post-ad'))).toBe(false);
+      expect(await client.syncStore.get('P-1')).toBeUndefined();
+      expect(client.limiter.recentCount).toBe(0);
+    });
+  }
 
   it('fails before uploading anything when the product photo is not an image', async () => {
     // The store returns HTML labelled as a PNG.

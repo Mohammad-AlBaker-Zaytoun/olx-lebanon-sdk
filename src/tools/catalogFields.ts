@@ -64,7 +64,7 @@ function choicesOf(f: OlxField): OlxFieldChoice[] {
 }
 
 /** A readable table of a category's postable fields. */
-export function describeFields(fields: OlxField[], maxChoices = 40): string {
+export function describeFields(fields: OlxField[], maxChoices = Infinity): string {
   const lines: string[] = [];
   for (const f of postableFields(fields)) {
     const limits = [
@@ -84,16 +84,27 @@ export function describeFields(fields: OlxField[], maxChoices = 40): string {
 
 /** A starting catalog entry for the category: required fields listed, placeholders for the rest. */
 export function catalogEntry(externalId: string, label: string, fields: OlxField[]): Record<string, unknown> {
-  const required = postableFields(fields)
-    .filter((f) => f.isMandatory && !PRICE_FIELDS.has(f.attribute))
-    .map((f) => f.attribute);
+  const postable = postableFields(fields);
+  const required = postable.filter((f) => f.isMandatory && !PRICE_FIELDS.has(f.attribute)).map((f) => f.attribute);
+  // Every choice field, labels → OLX values, ready to rename to your own attribute names.
+  const valueMap = Object.fromEntries(
+    postable
+      .filter((f) => !PRICE_FIELDS.has(f.attribute) && choicesOf(f).length > 0)
+      .map((f) => [f.attribute, Object.fromEntries(choicesOf(f).map((c) => [c.label.trim(), c.value]))]),
+  );
+  const price = postable.find((f) => f.attribute === 'price');
+  const priceLimits =
+    price && (price.minValue != null || price.maxValue != null)
+      ? { ...(price.minValue != null ? { min: price.minValue } : {}), ...(price.maxValue != null ? { max: price.maxValue } : {}) }
+      : undefined;
   return {
     label,
     olxCategoryId: externalId,
     requiredAttributes: required,
     attributeMap: {},
-    valueMap: {},
+    valueMap,
     defaults: {},
+    ...(priceLimits ? { priceLimits } : {}),
   };
 }
 

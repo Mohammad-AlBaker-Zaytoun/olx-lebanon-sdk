@@ -31,6 +31,8 @@ export {
 export {
   OLX_LB_DEFAULT_CONTACT_METHOD,
   OLX_LB_IMAGE_BASE,
+  OLX_LB_UPLOAD_HOST,
+  OLX_LB_UPLOAD_PREFIX,
   createOlxLebanonAdapter,
   olxLebanonAdapter,
   olxLebanonBearer,

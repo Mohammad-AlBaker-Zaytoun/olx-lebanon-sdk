@@ -39,8 +39,9 @@ function uploadedFileName(uploadUrl: string, name: string): string {
   return `${name}.jpg`;
 }
 
-/** S3 hosts only (`<bucket>.s3.<region>.amazonaws.com` or `s3.<region>.amazonaws.com`). */
-const S3_HOST = /^([a-z0-9][a-z0-9.-]*\.)?s3[.-]([a-z0-9-]+\.)?amazonaws\.com$/;
+/** OLX Lebanon's own upload bucket and folder, as captured. */
+export const OLX_LB_UPLOAD_HOST = 'olx-lb-prod.s3.eu-central-1.amazonaws.com';
+export const OLX_LB_UPLOAD_PREFIX = '/temp/';
 
 /** Values that are not real attributes and must not be sent inside `extra_fields`. */
 const RESERVED_EXTRA = new Set(['price', 'secondary_price']);
@@ -74,6 +75,10 @@ export function olxLebanonBearer(session: SessionData, nowSeconds = Date.now() /
 export interface OlxLebanonAdapterOptions {
   /** `source` sent with new ads; the web app sends "nova". */
   source?: string;
+  /** Upload bucket host; only this host is ever sent photos. */
+  uploadHost?: string;
+  /** Path prefix upload URLs must start with. */
+  uploadPathPrefix?: string;
 }
 
 /** Turns a raw ad from any of OLX's responses into an `OlxAd`. */
@@ -99,7 +104,8 @@ export function createOlxLebanonAdapter(opts: OlxLebanonAdapterOptions = {}): Ol
       return { 'accept-language': 'en', ...(token ? { authorization: `Bearer ${token}` } : {}) };
     },
 
-    buildAdPayload(l, images, ctx) {
+    buildAdPayload(l, _imageIds, ctx) {
+      const images = ctx.images;
       const extra: Rec = {};
       for (const [k, v] of Object.entries(l.attributes)) if (!RESERVED_EXTRA.has(k)) extra[k] = v;
       // OLX keeps the USD price in `price` and the Lebanese-pound price in `secondary_price`.
@@ -173,6 +179,11 @@ export function createOlxLebanonAdapter(opts: OlxLebanonAdapterOptions = {}): Ol
       return results.map((item) => toAd(rec(item), item));
     },
 
+    hasNextPage: (raw) => {
+      const next = rec(raw).next;
+      return next !== null && next !== undefined && next !== false && next !== '';
+    },
+
     parseImageUpload() {
       throw new OlxSdkError('OLX Lebanon uploads photos by signed URL, not multipart');
     },
@@ -186,7 +197,14 @@ export function createOlxLebanonAdapter(opts: OlxLebanonAdapterOptions = {}): Ol
         if (!url) throw new OlxSdkError('No upload URL in the OLX signed-URL response');
         return url;
       },
-      isAllowedUploadHost: (host) => S3_HOST.test(host),
+      // Only OLX's own bucket and folder: a tampered response must not send photos elsewhere.
+      isAllowedUploadUrl: (url) =>
+        url.protocol === 'https:' &&
+        url.hostname.toLowerCase() === (opts.uploadHost ?? OLX_LB_UPLOAD_HOST) &&
+        !url.port &&
+        url.pathname.startsWith(opts.uploadPathPrefix ?? OLX_LB_UPLOAD_PREFIX) &&
+        !url.pathname.includes('..') &&
+        !/%2f|%5c/i.test(url.pathname),
       toUploadedImage: (name, info) => ({
         id: name,
         url: OLX_LB_IMAGE_BASE + uploadedFileName(info.uploadUrl, name),

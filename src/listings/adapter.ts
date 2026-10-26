@@ -12,6 +12,8 @@ export interface PayloadContext {
   account?: AccountInfo;
   /** Contact settings from configuration, already merged with the account profile. */
   contact: ContactSettings;
+  /** The uploaded photos in full (url, size), in the same order as `imageIds`. */
+  images: UploadedImage[];
 }
 
 /**
@@ -25,8 +27,8 @@ export interface SignedUploadFlow {
   signQuery(name: string): Record<string, string>;
   /** Reads the upload URL out of the `signImageUpload` response. */
   parseSignedUrl(raw: unknown): string;
-  /** Hosts the upload URL may point to; anything else is refused. */
-  isAllowedUploadHost(host: string): boolean;
+  /** Whether the upload URL is OLX's own storage (host and path); anything else is refused. */
+  isAllowedUploadUrl(url: URL): boolean;
   /** How the ad body refers to the uploaded photo. `uploadUrl` is where it was PUT. */
   toUploadedImage(
     name: string,
@@ -39,9 +41,15 @@ export interface SignedUploadFlow {
  * default), mapped from a real capture; pass your own to `OlxClient` if OLX changes.
  */
 export interface OlxAdapter {
-  buildAdPayload(listing: MappedListing, images: UploadedImage[], ctx: PayloadContext): unknown;
+  /**
+   * The request body for createAd / updateAd. `imageIds` are the uploaded photos' ids; the
+   * full photo details are in `ctx.images`.
+   */
+  buildAdPayload(listing: MappedListing, imageIds: string[], ctx: PayloadContext): unknown;
   parseAd(raw: unknown): OlxAd;
   parseAdList(raw: unknown): OlxAd[];
+  /** Whether a listMyAds response has another page; without it, a short page means the end. */
+  hasNextPage?(raw: unknown): boolean;
   /** Multipart uploads (`uploadImage`): reads the photo id from the response. */
   parseImageUpload(raw: unknown): string;
   /** Multipart field name OLX expects for the image file. */
@@ -108,7 +116,7 @@ export const placeholderAdapter: OlxAdapter = {
   imageFieldName: 'file',
   requiredEndpoints: ['createAd', 'updateAd', 'deleteAd', 'uploadImage'],
 
-  buildAdPayload(l, images) {
+  buildAdPayload(l, imageIds) {
     return {
       title: l.title,
       description: l.description,
@@ -116,7 +124,7 @@ export const placeholderAdapter: OlxAdapter = {
       category_id: l.categoryId,
       location_id: l.locationId,
       attributes: l.attributes,
-      images: images.map((i) => i.id),
+      images: imageIds,
     };
   },
 

@@ -118,7 +118,7 @@ export class ImageUploader {
       // Part of a single ad write: the caller already holds the write slot.
       const raw = await this.o.http.call('signImageUpload', { query: flow.signQuery(name), rateLimit: false });
       const uploadUrl = flow.parseSignedUrl(raw);
-      await this.o.http.putToSignedUrl(uploadUrl, img.data, size.type, (host) => flow.isAllowedUploadHost(host));
+      await this.o.http.putToSignedUrl(uploadUrl, img.data, size.type, (url) => flow.isAllowedUploadUrl(url));
       return flow.toUploadedImage(name, { width: size.width, height: size.height, contentType: size.type, uploadUrl });
     }
     const form = new FormData();

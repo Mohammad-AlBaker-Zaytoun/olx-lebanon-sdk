@@ -23,9 +23,12 @@ const CategorySchema = z.object({
   defaults: z.record(Attr).default({}),
   /**
    * Translates your values to OLX's choice values, per attribute (your attribute names),
-   * e.g. { "condition": { "new": "1", "used": "2" } }. Unlisted values are sent unchanged.
+   * e.g. { "condition": { "new": "1", "used": "2" } }. Matching ignores case and surrounding
+   * spaces. Unlisted values are sent unchanged.
    */
   valueMap: z.record(z.record(Attr)).default({}),
+  /** The category's price range in USD, from the posting form; checked before posting. */
+  priceLimits: z.object({ min: z.number().optional(), max: z.number().optional() }).optional(),
 });
 
 const LocationSchema = z.object({
@@ -56,6 +59,15 @@ export interface MappedListing {
   price: number;
   currency: 'USD' | 'LBP';
   attributes: Record<string, AttributeValue>;
+}
+
+/** Exact match first, then ignoring case and surrounding spaces. */
+function lookupValue(values: Record<string, AttributeValue>, value: AttributeValue): AttributeValue {
+  const exact = own(values, String(value));
+  if (exact !== undefined) return exact;
+  const wanted = String(value).trim().toLowerCase();
+  for (const [k, v] of Object.entries(values)) if (k.trim().toLowerCase() === wanted) return v;
+  return value;
 }
 
 export function parseCatalog(raw: unknown): Catalog {
@@ -109,6 +121,15 @@ export class CatalogMapper {
       issues.push(`${input.images?.length} images given; OLX allows ${maxImages}`);
     }
     if (!Number.isFinite(input.price) || input.price < 0) issues.push('Price must be a non-negative number');
+    const limits = category?.priceLimits;
+    if (limits && (input.currency ?? 'USD') === 'USD' && Number.isFinite(input.price)) {
+      if (limits.min !== undefined && input.price < limits.min) {
+        issues.push(`Price ${input.price} USD is below OLX's minimum of ${limits.min} for this category`);
+      }
+      if (limits.max !== undefined && input.price > limits.max) {
+        issues.push(`Price ${input.price} USD is above OLX's maximum of ${limits.max} for this category`);
+      }
+    }
 
     const merged: Record<string, AttributeValue> = { ...(category?.defaults ?? {}), ...(input.attributes ?? {}) };
     if (category) {
@@ -125,7 +146,7 @@ export class CatalogMapper {
     const attributes = Object.fromEntries(
       Object.entries(merged).map(([key, value]) => {
         const values = own(category.valueMap, key);
-        const mappedValue = values ? (own(values, String(value)) ?? value) : value;
+        const mappedValue = values ? lookupValue(values, value) : value;
         return [own(category.attributeMap, key) ?? key, mappedValue];
       }),
     );
