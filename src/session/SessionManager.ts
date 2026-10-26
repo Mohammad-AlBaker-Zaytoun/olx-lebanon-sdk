@@ -1,6 +1,6 @@
 import { AuthError } from '../errors.js';
 import { silentLogger, type Logger } from '../logger.js';
-import type { SessionData, SessionStore } from './storage.js';
+import type { SessionData, SessionStore, StoredCookie } from './storage.js';
 
 export interface SessionProvider {
   getSession(): Promise<SessionData>;
@@ -13,6 +13,40 @@ export interface SessionStatus {
   savedAt?: string;
   cookieCount: number;
   capturedHeaders: string[];
+}
+
+interface BrowserStorageState {
+  cookies: StoredCookie[];
+  origins: Array<{ origin: string; localStorage: Array<{ name: string; value: string }> }>;
+}
+
+/**
+ * Keeps only cookies and localStorage for the given domains (and subdomains). Signing in with
+ * Google/Facebook puts their session cookies in the same browser context; those must never
+ * end up in session.json.
+ */
+export function scopeStorageState(
+  state: BrowserStorageState,
+  domains: string[],
+): { cookies: StoredCookie[]; localStorage: Record<string, Record<string, string>> } {
+  const inScope = (host: string) => {
+    const h = host.toLowerCase().replace(/^\./, '');
+    return domains.some((d) => h === d || h.endsWith('.' + d));
+  };
+  return {
+    cookies: state.cookies.filter((c) => inScope(c.domain)),
+    localStorage: Object.fromEntries(
+      state.origins
+        .filter((o) => {
+          try {
+            return inScope(new URL(o.origin).hostname);
+          } catch {
+            return false;
+          }
+        })
+        .map((o) => [o.origin, Object.fromEntries(o.localStorage.map((kv) => [kv.name, kv.value]))]),
+    ),
+  };
 }
 
 /** Headers worth replaying if the web app sends them on authenticated calls. Extend via options. */
@@ -131,12 +165,10 @@ export class SessionManager implements SessionProvider {
 
       const state = await context.storageState();
       const userAgent = await page.evaluate(() => navigator.userAgent);
-      const localStorage = Object.fromEntries(
-        state.origins.map((o) => [o.origin, Object.fromEntries(o.localStorage.map((kv) => [kv.name, kv.value]))]),
-      );
+      const { cookies, localStorage } = scopeStorageState(state, domains);
 
       const session: SessionData = {
-        cookies: state.cookies,
+        cookies,
         headers: captured,
         localStorage,
         userAgent,

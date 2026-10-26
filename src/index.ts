@@ -23,7 +23,7 @@ export {
 export { WriteRateLimiter, type RateLimiterClock } from './http/rateLimiter.js';
 export { normalizeStatus, placeholderAdapter, type OlxAdapter } from './listings/adapter.js';
 export { ImageUploader, isPrivateAddress, type ImageUploaderOptions } from './listings/images.js';
-export { ListingsApi, type ListingsPort } from './listings/ListingsApi.js';
+export { ListingsApi, type CreateHooks, type ListingsPort } from './listings/ListingsApi.js';
 export * from './listings/types.js';
 export {
   FileRequestLog,
@@ -44,9 +44,18 @@ export {
   type MappedListing,
 } from './mapping/CatalogMapper.js';
 export { buildServer, type ServerDeps } from './server/app.js';
-export { JobQueue, type Job, type JobHandler, type JobStatus, type JobType } from './server/queue.js';
+export {
+  JobQueue,
+  QueueFullError,
+  type Job,
+  type JobHandler,
+  type JobQueueOptions,
+  type JobStatus,
+  type JobType,
+} from './server/queue.js';
 export {
   DEFAULT_CAPTURED_HEADERS,
+  scopeStorageState,
   SessionManager,
   type SessionManagerOptions,
   type SessionProvider,
@@ -75,4 +84,4 @@ export {
   type SyncStore,
 } from './sync/SyncStore.js';
 export { createWebhookNotifier, signWebhook, stripRaw, type WebhookNotifier } from './server/webhook.js';
-export { formatHarSummary, summarizeHar, type HarCall } from './tools/har.js';
+export { formatHarSummary, isSensitiveSegment, summarizeHar, type HarCall } from './tools/har.js';

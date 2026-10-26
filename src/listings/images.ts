@@ -157,7 +157,14 @@ export class ImageUploader {
       if (remaining <= 0) throw new OlxSdkError(`Image ${n}: image downloads took too long for this listing`);
       // One signal covers headers AND body, so a slowly dripping body is cut off too.
       const signal = AbortSignal.timeout(Math.min(this.o.timeoutMs ?? 20_000, remaining));
-      const res = await fetchImpl(url, { redirect: 'manual', signal });
+      let res: Response;
+      try {
+        res = await fetchImpl(url, { redirect: 'manual', signal });
+      } catch (err) {
+        // Network errors from fetch embed the full URL (query, credentials); never pass them on.
+        const reason = (err as Error).name === 'TimeoutError' ? 'timed out' : 'could not connect';
+        throw new OlxSdkError(`Image ${n} (${safeUrl(url)}): download ${reason}`);
+      }
 
       if (res.status >= 300 && res.status < 400) {
         await res.body?.cancel();
@@ -176,7 +183,13 @@ export class ImageUploader {
         await res.body?.cancel();
         throw new OlxSdkError(`Image ${n} is larger than ${this.maxBytes} bytes`);
       }
-      const data = await readCapped(res, this.maxBytes, n);
+      let data: Uint8Array;
+      try {
+        data = await readCapped(res, this.maxBytes, n);
+      } catch (err) {
+        if (err instanceof OlxSdkError) throw err;
+        throw new OlxSdkError(`Image ${n} (${safeUrl(url)}): download was interrupted`);
+      }
       const name = basename(url.pathname) || 'image.jpg';
       return {
         data,
@@ -190,6 +203,9 @@ export class ImageUploader {
   private async assertAllowed(url: URL, n: number): Promise<void> {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       throw new OlxSdkError(`Image ${n}: unsupported URL scheme ${url.protocol}`);
+    }
+    if (url.username || url.password) {
+      throw new OlxSdkError(`Image ${n}: URLs with embedded credentials are not accepted`);
     }
     const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
     const allowed = this.o.allowedHosts;

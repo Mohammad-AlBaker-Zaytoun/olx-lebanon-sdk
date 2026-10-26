@@ -45,7 +45,20 @@ export const RestListingSchema = z.object({
   categoryKey: z.string().min(1),
   locationKey: z.string().min(1),
   attributes: z.record(z.union([z.string(), z.number(), z.boolean()])).default({}),
-  images: z.array(z.object({ url: z.string().url() })).max(30).default([]),
+  images: z
+    .array(
+      z.object({
+        url: z
+          .string()
+          .url()
+          .refine((u) => {
+            const url = new URL(u);
+            return !url.username && !url.password;
+          }, 'image URLs must not contain credentials'),
+      }),
+    )
+    .max(30)
+    .default([]),
 });
 
 export type RestListing = z.infer<typeof RestListingSchema>;

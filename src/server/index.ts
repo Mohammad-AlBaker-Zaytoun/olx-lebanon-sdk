@@ -39,15 +39,16 @@ async function main(): Promise<void> {
     store: client.syncStore,
     resolve: {
       link: (productId, adId, opts) => client.sync.link(productId, adId, opts),
-      forget: (productId) => client.sync.forget(productId),
+      forget: (productId, opts) => client.sync.forget(productId, opts),
     },
     status: async () => ({
       session: await client.session.status(),
       endpoints: client.endpointStatus(),
       queue: queue.stats(),
       writesLastHour: client.limiter.recentCount,
+      // A `creating` marker for a create that is running right now is expected, not a problem.
       needsAttention: (await client.syncStore.all())
-        .filter((r) => r.syncState)
+        .filter((r) => r.syncState && !(r.syncState === 'creating' && client.sync.isBusy(r.productId)))
         .map((r) => ({ productId: r.productId, syncState: r.syncState, lastError: r.lastError })),
     }),
   });
@@ -69,7 +70,11 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     if (stopping) return;
     stopping = true;
-    logger.info('Shutting down; finishing the current job first', { signal });
+    const cancelled = queue.stop();
+    logger.info('Shutting down; finishing the running job, queued jobs cancelled', {
+      signal,
+      cancelled: cancelled.map((j) => j.productId),
+    });
     await app.close();
     await queue.idle();
     await webhook?.flush();

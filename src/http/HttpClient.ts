@@ -19,6 +19,8 @@ export interface CallOptions {
    * slot (see `acquireWriteSlot`), e.g. the createAd that follows its image uploads.
    */
   rateLimit?: boolean;
+  /** Awaited right before the request is first sent; if it throws, nothing is sent. */
+  beforeSend?: () => Promise<void>;
 }
 
 export interface HttpClientOptions {
@@ -78,8 +80,8 @@ export class OlxHttpClient {
     this.domain = sessionDomain(o.baseUrl);
   }
 
-  /** Waits for one write slot from the rate limiter. */
-  acquireWriteSlot(): Promise<void> {
+  /** Waits for one write slot from the rate limiter; the resolved function refunds it. */
+  acquireWriteSlot(): Promise<() => void> {
     return this.o.limiter.acquire();
   }
 
@@ -118,6 +120,7 @@ export class OlxHttpClient {
     const timeoutMs = this.o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     for (let attempt = 1; ; attempt++) {
+      if (attempt === 1 && opts.beforeSend) await opts.beforeSend();
       const started = Date.now();
       let res: Response;
       try {
@@ -149,7 +152,8 @@ export class OlxHttpClient {
       if (res.status >= 300 && res.status < 400) {
         const location = res.headers.get('location');
         let where = 'another page';
-        let looksLikeLogin = !location;
+        // A write answered by a bare 3xx (no Location) can't be called "not processed".
+        let looksLikeLogin = isRead && !location;
         if (location) {
           try {
             const loc = new URL(location, url);
@@ -178,7 +182,25 @@ export class OlxHttpClient {
 
       if (res.ok) {
         const type = res.headers.get('content-type') ?? '';
-        const payload = await readBody(res);
+        let payload: unknown;
+        try {
+          payload = await readBody(res);
+        } catch (err) {
+          // Headers said success but the body was cut off (reset, timeout mid-body).
+          this.record({ name, method: spec.method, url, attempt, started, status: res.status, error: (err as Error).message });
+          if (!isRead) {
+            throw new UncertainWriteError(
+              name,
+              `OLX accepted "${name}" (HTTP ${res.status}) but the response body could not be read`,
+              { cause: err, status: res.status },
+            );
+          }
+          if (attempt < maxAttempts) {
+            await this.sleep(Math.min(baseDelay * 2 ** (attempt - 1), maxDelay));
+            continue;
+          }
+          throw new OlxSdkError(`Could not read the OLX response for "${name}"`, { cause: err });
+        }
         if (type.includes('text/html')) {
           // An HTML page from an API endpoint is usually a login or challenge page.
           const message = `OLX answered "${name}" with an HTML page instead of data (login or bot-protection page?)`;

@@ -5,8 +5,17 @@ import type { OlxAdapter } from './adapter.js';
 import type { ImageUploader } from './images.js';
 import type { ListingInput, OlxAd } from './types.js';
 
+export interface CreateHooks {
+  /**
+   * Called (and awaited) immediately before the createAd request is sent — after mapping,
+   * the rate-limit wait and image uploads. If it throws, nothing is sent. SyncService uses it
+   * to persist its duplicate-protection marker; custom ListingsPort implementations must call it.
+   */
+  beforeSend?: () => Promise<void>;
+}
+
 export interface ListingsPort {
-  create(input: ListingInput): Promise<OlxAd>;
+  create(input: ListingInput, hooks?: CreateHooks): Promise<OlxAd>;
   update(adId: string, input: ListingInput): Promise<OlxAd>;
   delete(adId: string): Promise<void>;
 }
@@ -22,15 +31,16 @@ export interface ListingsApiDeps {
 export class ListingsApi implements ListingsPort {
   constructor(private readonly d: ListingsApiDeps) {}
 
-  async create(input: ListingInput): Promise<OlxAd> {
+  async create(input: ListingInput, hooks: CreateHooks = {}): Promise<OlxAd> {
     // Map first so a bad product fails before anything is sent.
     const mapped = this.d.mapper.resolve(input);
     // Take the write slot before uploading, so images aren't uploaded long before the ad that uses them.
-    await this.d.http.acquireWriteSlot();
-    const imageIds = await this.uploadImages(input);
+    const refund = await this.d.http.acquireWriteSlot();
+    const imageIds = await this.uploadImages(input, refund);
     const raw = await this.d.http.call('createAd', {
       json: this.d.adapter.buildAdPayload(mapped, imageIds),
       rateLimit: false,
+      beforeSend: hooks.beforeSend,
     });
     try {
       return this.d.adapter.parseAd(raw);
@@ -45,8 +55,8 @@ export class ListingsApi implements ListingsPort {
 
   async update(adId: string, input: ListingInput): Promise<OlxAd> {
     const mapped = this.d.mapper.resolve(input);
-    await this.d.http.acquireWriteSlot();
-    const imageIds = await this.uploadImages(input);
+    const refund = await this.d.http.acquireWriteSlot();
+    const imageIds = await this.uploadImages(input, refund);
     const raw = await this.d.http.call('updateAd', {
       params: { id: adId },
       json: this.d.adapter.buildAdPayload(mapped, imageIds),
@@ -64,12 +74,14 @@ export class ListingsApi implements ListingsPort {
   /**
    * An image upload with an unknown outcome is not an uncertain *ad*: no ad request has been
    * sent yet, so at worst an orphan image exists on OLX. Report it as a plain failure so
-   * the product isn't parked for manual reconciliation.
+   * the product isn't parked for manual reconciliation. The write slot is refunded, since no
+   * ad write happened.
    */
-  private async uploadImages(input: ListingInput): Promise<string[]> {
+  private async uploadImages(input: ListingInput, refundSlot: () => void): Promise<string[]> {
     try {
       return await this.d.images.uploadAll(input.images ?? []);
     } catch (err) {
+      refundSlot();
       if (err instanceof UncertainWriteError) {
         throw new ImageUploadError(`Image upload failed before the ad was sent: ${err.message}`, { cause: err });
       }

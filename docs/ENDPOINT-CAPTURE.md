@@ -23,7 +23,7 @@ You get two files:
 - `captures/olx-flow-<timestamp>.summary.txt`: the API-looking calls, with writes listed first and IDs collapsed to `{id}`.
 
 > [!CAUTION]
-> The HAR contains your password, cookies and tokens. `captures/` is git-ignored and written owner-only. Never commit it, upload it or paste it into an issue. The `.summary.txt` only holds methods, paths and status codes, so it's safe to share when you ask for help.
+> The HAR contains your password, cookies and tokens. `captures/` is git-ignored and written owner-only. Never commit it, upload it or paste it into an issue. The `.summary.txt` only holds methods, paths and status codes. Ids, tokens, emails and phone-like path segments are replaced with `{id}`, so it's meant to be shareable when you ask for help, but skim it first.
 
 Only requests to the OLX domain are recorded, so a Google or Facebook sign-in isn't saved into the file. If the web app sends a step to another host (a photo upload to an image CDN, say), it won't appear in the summary. To fix that, open DevTools → Network during the capture, find the host, add it to `OLX_EXTRA_HOSTS` in `.env`, and capture again.
 

@@ -81,17 +81,36 @@ export class JsonFileSyncStore implements SyncStore {
   }
 
   async set(record: SyncRecord) {
-    (await this.load()).set(record.productId, record);
-    await this.persist();
+    const records = await this.load();
+    const previous = records.get(record.productId);
+    records.set(record.productId, record);
+    await this.persistOrRollback(record.productId, previous);
   }
 
   async delete(productId: string) {
-    (await this.load()).delete(productId);
-    await this.persist();
+    const records = await this.load();
+    const previous = records.get(productId);
+    records.delete(productId);
+    await this.persistOrRollback(productId, previous);
   }
 
   async all() {
     return [...(await this.load()).values()];
+  }
+
+  /** Memory must match disk: if the write fails, undo the in-memory change (unless a later change replaced it). */
+  private async persistOrRollback(productId: string, previous: SyncRecord | undefined): Promise<void> {
+    const records = await this.load();
+    const changed = records.get(productId);
+    try {
+      await this.persist();
+    } catch (err) {
+      if (records.get(productId) === changed) {
+        if (previous) records.set(productId, previous);
+        else records.delete(productId);
+      }
+      throw err;
+    }
   }
 
   /** Cache the load promise (not its result) so concurrent first calls share one map. */

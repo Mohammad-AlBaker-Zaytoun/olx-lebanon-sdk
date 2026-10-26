@@ -3,7 +3,7 @@ import type { ListingInput } from '../listings/types.js';
 import { silentLogger, type Logger } from '../logger.js';
 
 export type JobType = 'upsert' | 'remove';
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface Job {
   id: string;
@@ -25,7 +25,16 @@ export interface JobQueueOptions {
   logger?: Logger;
   /** Finished jobs kept in memory for GET /jobs/:id. */
   maxHistory?: number;
+  /** Maximum distinct products waiting at once; beyond it enqueue throws QueueFullError (REST: 429). */
+  maxQueued?: number;
   onSettled?: (job: Job) => void;
+}
+
+export class QueueFullError extends Error {
+  constructor(max: number) {
+    super(`The sync queue already holds ${max} waiting products; retry later`);
+    this.name = 'QueueFullError';
+  }
 }
 
 /**
@@ -36,8 +45,11 @@ export interface JobQueueOptions {
 export class JobQueue {
   private readonly jobs = new Map<string, Job>();
   private readonly payloads = new Map<string, ListingInput | undefined>();
-  private readonly pending: string[] = [];
+  private pending: string[] = [];
+  /** productId → waiting job id, for O(1) coalescing. */
+  private readonly pendingByProduct = new Map<string, string>();
   private running = false;
+  private stopped = false;
   private idleWaiters: Array<() => void> = [];
   private readonly logger: Logger;
 
@@ -49,7 +61,8 @@ export class JobQueue {
   }
 
   enqueue(type: JobType, productId: string, payload?: ListingInput, opts: { force?: boolean } = {}): Job {
-    const waitingId = this.pending.find((id) => this.jobs.get(id)?.productId === productId);
+    if (this.stopped) throw new Error('Job queue is stopped');
+    const waitingId = this.pendingByProduct.get(productId);
     if (waitingId) {
       const job = this.jobs.get(waitingId)!;
       job.type = type;
@@ -58,6 +71,9 @@ export class JobQueue {
       this.logger.debug('Coalesced job', { jobId: job.id, productId, type });
       return job;
     }
+
+    const maxQueued = this.opts.maxQueued ?? 2_000;
+    if (this.pending.length >= maxQueued) throw new QueueFullError(maxQueued);
 
     const job: Job = {
       id: randomUUID(),
@@ -70,12 +86,41 @@ export class JobQueue {
     this.jobs.set(job.id, job);
     this.payloads.set(job.id, payload);
     this.pending.push(job.id);
+    this.pendingByProduct.set(productId, job.id);
     this.kick();
     return job;
   }
 
   get(id: string): Job | undefined {
     return this.jobs.get(id);
+  }
+
+  /**
+   * Stops taking work: queued jobs are cancelled (and reported via onSettled) so shutdown
+   * only waits for the job that is already running, not hours of rate-limited backlog.
+   * Await `idle()` afterwards for the running job to finish.
+   */
+  stop(): Job[] {
+    this.stopped = true;
+    const cancelled = this.pending.map((id) => this.jobs.get(id)!);
+    this.pending = [];
+    this.pendingByProduct.clear();
+    for (const job of cancelled) {
+      job.status = 'cancelled';
+      job.finishedAt = new Date().toISOString();
+      job.error = { name: 'Cancelled', message: 'The service stopped before this job ran; send the request again' };
+      this.payloads.delete(job.id);
+      this.settle(job);
+    }
+    return cancelled;
+  }
+
+  private settle(job: Job): void {
+    try {
+      this.opts.onSettled?.(job);
+    } catch (err) {
+      this.logger.warn('onSettled hook threw', { error: (err as Error).message });
+    }
   }
 
   stats(): { queued: number; running: boolean; tracked: number } {
@@ -99,6 +144,7 @@ export class JobQueue {
       while (this.pending.length > 0) {
         const id = this.pending.shift()!;
         const job = this.jobs.get(id)!;
+        if (this.pendingByProduct.get(job.productId) === id) this.pendingByProduct.delete(job.productId);
         const payload = this.payloads.get(id);
         job.status = 'running';
         job.startedAt = new Date().toISOString();
@@ -114,11 +160,7 @@ export class JobQueue {
           job.finishedAt = new Date().toISOString();
           this.payloads.delete(id);
           this.prune();
-          try {
-            this.opts.onSettled?.(job);
-          } catch (err) {
-            this.logger.warn('onSettled hook threw', { error: (err as Error).message });
-          }
+          this.settle(job);
         }
       }
     } finally {
@@ -131,7 +173,9 @@ export class JobQueue {
 
   private prune(): void {
     const max = this.opts.maxHistory ?? 500;
-    const finished = [...this.jobs.values()].filter((j) => j.status === 'succeeded' || j.status === 'failed');
+    const finished = [...this.jobs.values()].filter(
+      (j) => j.status === 'succeeded' || j.status === 'failed' || j.status === 'cancelled',
+    );
     for (const job of finished.slice(0, Math.max(0, finished.length - max))) this.jobs.delete(job.id);
   }
 }

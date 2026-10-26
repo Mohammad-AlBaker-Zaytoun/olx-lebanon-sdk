@@ -55,15 +55,36 @@ export class UncertainWriteError extends OlxSdkError {
   readonly body?: unknown;
 }
 
-/** `link` would replace a healthy link to a different ad (which would orphan that ad). */
+/**
+ * `link` would replace a healthy link to a different ad (orphaning that ad), or take an ad
+ * that another product is already linked to (two products editing one ad).
+ */
 export class LinkConflictError extends OlxSdkError {
+  constructor(
+    public readonly productId: string,
+    public readonly currentAdId: string,
+    /** Set when the ad belongs to another product. */
+    public readonly otherProductId?: string,
+  ) {
+    super(
+      otherProductId
+        ? `Ad ${currentAdId} is already linked to product "${otherProductId}". Pass replace: true to move ` +
+            `the link to "${productId}" (product "${otherProductId}" will then have no ad).`
+        : `Product "${productId}" is already linked to ad ${currentAdId}. Pass replace: true to re-link it ` +
+            '(the current ad will no longer be managed — delete it on OLX if it should not stay live).',
+    );
+  }
+}
+
+/** `forget` on a healthy link would leave that ad live but unmanaged, and the next sync would post another. */
+export class ForgetConflictError extends OlxSdkError {
   constructor(
     public readonly productId: string,
     public readonly currentAdId: string,
   ) {
     super(
-      `Product "${productId}" is already linked to ad ${currentAdId}. Pass replace: true to re-link it ` +
-        '(the current ad will no longer be managed — delete it on OLX if it should not stay live).',
+      `Product "${productId}" has a healthy link to ad ${currentAdId}. Use DELETE to remove the ad, or pass ` +
+        'force: true to forget the link anyway (the ad stays live on OLX, unmanaged).',
     );
   }
 }

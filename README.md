@@ -110,7 +110,7 @@ Every route except `/health` requires the `X-Api-Key` header. The service binds 
 | `POST` | `/products/:productId/listing/resolve` | Resolve a parked product (see below) |
 | `GET` | `/products/:productId/listing` | The stored product ↔ ad link |
 | `GET` | `/listings` | All stored links |
-| `GET` | `/jobs/:jobId` | Job outcome (`queued`, `running`, `succeeded`, `failed`) |
+| `GET` | `/jobs/:jobId` | Job outcome (`queued`, `running`, `succeeded`, `failed`, `cancelled`), without raw OLX data |
 
 Listing body:
 
@@ -141,7 +141,19 @@ POST /products/P-100/listing/resolve
 { "action": "forget" }                      # no ad exists: the next sync creates one
 ```
 
-`link` also lets you adopt an ad you posted by hand. It refuses (`409 link_conflict`) to replace a healthy link to a *different* ad unless you add `"replace": true`, because replacing it means the old ad is no longer managed.
+`link` also lets you adopt an ad you posted by hand. Both actions guard against orphaned or shared ads, answering `409` unless you opt in:
+
+- `link` refuses (`link_conflict`) to replace a healthy link to a *different* ad, or to take an ad that another product is already linked to. Add `"replace": true` to do it anyway.
+- `forget` refuses (`healthy_link`) on a product with a healthy link, because the ad would stay live but unmanaged and the next sync would post a second one. To take an ad down, use `DELETE`. Add `"force": true` only if you really mean to stop managing it.
+
+A product whose create is running right now is not listed under `needsAttention`. A resolve sent during a create waits for that create to finish and is then checked against its result.
+
+### Queue behaviour
+
+- Jobs run one at a time.
+- A new request for a product that is already waiting replaces the waiting job.
+- At most 2,000 products can wait at once. Beyond that, `PUT`/`DELETE` answer `429 queue_full` with `Retry-After`.
+- On shutdown (Ctrl+C or a service stop), the running job is allowed to finish. Waiting jobs are marked `cancelled` and reported to the webhook, so resend them after a restart.
 
 ### Webhooks
 
@@ -245,7 +257,8 @@ All settings are environment variables. See [`.env.example`](.env.example) for t
 
 ## Security notes
 
-- `.olx-session/` and `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored and written owner-only. Never commit or share them. The `.summary.txt` next to a capture holds no secrets.
+- `.olx-session/` and `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored and written owner-only. Never commit or share them. The `.summary.txt` next to a capture only lists methods, paths and status codes. Ids, tokens, emails and phone-like path segments are replaced with `{id}`. Still, skim it before sharing.
+- `session.json` keeps only cookies and storage for OLX (and `OLX_EXTRA_HOSTS`). If you sign in with Google or Facebook, those sites' cookies are not saved.
 - Your session's cookies and auth headers are only sent to the OLX domain and its subdomains. An endpoint on another host gets them only if you set `sendSessionToForeignHost` for it. Redirects from OLX are never followed. Only https endpoints are called.
 - The request log (`logs/requests.jsonl`) records method, path, status and timing only. It contains no bodies, cookies, tokens or query strings, and neither do image error messages.
 - The REST service uses a constant-time API key check, hides internal error details, and accepts only URL images, so a caller can't make it read local files. Image downloads block private and internal addresses unless you allowlist a host. Known limit: the address check and the download resolve DNS separately, so a hostile DNS server could still rebind between the two. On a server with internal services, set `OLX_IMAGE_HOSTS` to your store's image host.

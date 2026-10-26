@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isSafePathParam } from '../endpoints.js';
 import {
+  ForgetConflictError,
   LinkConflictError,
   OlxHttpError,
   OlxSdkError,
@@ -70,14 +71,16 @@ export interface SyncServiceDeps {
  * Keeps one OLX ad per store product: the first sync creates it, later syncs edit it in
  * place (never repost), and identical content is skipped.
  *
- * Duplicate protection: a `creating` marker is saved before every create. If the create's
- * outcome is unknown (timeout, 5xx, unreadable response) the product is parked as
- * `needs_reconcile` and is NOT posted again until you `link` or `forget` it.
+ * Duplicate protection: a `creating` marker is saved immediately before every createAd
+ * request (via the ListingsPort `beforeSend` hook — custom ports must call it). If the
+ * create's outcome is unknown (timeout, 5xx, redirect, unreadable response) the product is
+ * parked as `needs_reconcile` and is NOT posted again until you `link` or `forget` it.
  */
 export class SyncService {
   private readonly logger: Logger;
   private readonly now: () => Date;
   private readonly locks = new Map<string, Promise<unknown>>();
+  private readonly inFlight = new Set<string>();
 
   constructor(private readonly d: SyncServiceDeps) {
     this.logger = d.logger ?? silentLogger;
@@ -92,10 +95,16 @@ export class SyncService {
     return this.withLock(productId, () => this.doRemove(productId));
   }
 
+  /** True while a create for this product is in progress in this process (its marker is expected). */
+  isBusy(productId: string): boolean {
+    return this.inFlight.has(productId);
+  }
+
   /**
    * Resolve a parked product (you found its ad on OLX), or adopt an ad you posted by hand.
-   * The next upsert will edit that ad. Refuses to silently replace a healthy link to a
-   * different ad unless `replace` is set.
+   * The next upsert will edit that ad. Without `replace`, refuses to (a) replace a healthy
+   * link to a different ad, or (b) take an ad that another product is already linked to —
+   * both would leave an ad live but unmanaged, or two products editing one ad.
    */
   link(productId: string, adId: string, opts: { replace?: boolean } = {}): Promise<SyncRecord> {
     return this.withLock(productId, async () => {
@@ -103,6 +112,12 @@ export class SyncService {
       const existing = await this.d.store.get(productId);
       if (existing && !existing.syncState && existing.adId !== adId && !opts.replace) {
         throw new LinkConflictError(productId, existing.adId);
+      }
+      const holder = (await this.d.store.all()).find((r) => r.productId !== productId && r.adId === adId);
+      if (holder) {
+        if (!opts.replace) throw new LinkConflictError(productId, adId, holder.productId);
+        await this.d.store.delete(holder.productId);
+        this.logger.warn('Moved ad link from another product', { adId, from: holder.productId, to: productId });
       }
       const ts = this.now().toISOString();
       const record: SyncRecord = {
@@ -119,13 +134,21 @@ export class SyncService {
     });
   }
 
-  /** Resolve a parked product: no ad exists (or you deleted it). The next upsert will create one. */
-  forget(productId: string): Promise<boolean> {
+  /**
+   * Resolve a parked product: no ad exists (or you deleted it). The next upsert will create one.
+   * A healthy link is refused unless `force` is set, because forgetting it leaves that ad live
+   * on OLX but unmanaged, and the next sync would post a second one. (Runs under the product
+   * lock, so a forget sent while a create is running is checked against the create's result.)
+   */
+  forget(productId: string, opts: { force?: boolean } = {}): Promise<boolean> {
     return this.withLock(productId, async () => {
-      const existed = (await this.d.store.get(productId)) !== undefined;
+      const existing = await this.d.store.get(productId);
+      if (existing && !existing.syncState && !opts.force) {
+        throw new ForgetConflictError(productId, existing.adId);
+      }
       await this.d.store.delete(productId);
-      if (existed) this.logger.info('Forgot product link', { productId });
-      return existed;
+      if (existing) this.logger.info('Forgot product link', { productId, adId: existing.adId || undefined });
+      return existing !== undefined;
     });
   }
 
@@ -186,13 +209,19 @@ export class SyncService {
       createdAt: ts,
       lastSyncedAt: ts,
     };
-    // Saved BEFORE calling OLX: if the process dies mid-create, the product stays parked
-    // instead of being posted a second time on the next sync.
-    await this.d.store.set(marker);
+    let markerSaved = false;
+    // Saved right BEFORE the createAd request leaves (after the rate-limit wait and image
+    // uploads): if the process dies mid-create the product stays parked instead of being
+    // posted twice, and a crash while merely waiting for a write slot parks nothing.
+    const beforeSend = async () => {
+      await this.d.store.set(marker);
+      markerSaved = true;
+    };
 
     let ad: OlxAd;
+    this.inFlight.add(productId);
     try {
-      ad = await this.d.listings.create(input);
+      ad = await this.d.listings.create(input, { beforeSend });
     } catch (err) {
       if (err instanceof UncertainWriteError) {
         this.logger.error('Create outcome unknown; product parked for reconciliation', {
@@ -205,10 +234,14 @@ export class SyncService {
         throw err;
       }
       // Definitely not created (validation, auth, 4xx, image failure…): clear the marker.
-      await this.d.store
-        .delete(productId)
-        .catch((e) => this.logger.error('Could not clear create marker', { productId, error: (e as Error).message }));
+      if (markerSaved) {
+        await this.d.store
+          .delete(productId)
+          .catch((e) => this.logger.error('Could not clear create marker', { productId, error: (e as Error).message }));
+      }
       throw err;
+    } finally {
+      this.inFlight.delete(productId);
     }
 
     const record: SyncRecord = {
@@ -223,7 +256,8 @@ export class SyncService {
     try {
       await this.d.store.set(record);
     } catch (err) {
-      // The `creating` marker is still on disk, so the product stays parked rather than duplicated.
+      // The `creating` marker (saved before sending) is what remains in the store, so the
+      // product stays parked rather than being posted again.
       this.logger.error('CRITICAL: ad created on OLX but its link could not be saved', { productId, adId: ad.id });
       throw new OlxSdkError(
         `Ad ${ad.id} was created on OLX for product "${productId}" but the link could not be saved. ` +

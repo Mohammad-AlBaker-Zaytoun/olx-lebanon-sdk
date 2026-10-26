@@ -22,6 +22,30 @@ const STATIC = /\.(js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|map)$/i;
 const ID_SEGMENT = /^(\d{3,}|[0-9a-f]{16,}|[0-9a-f-]{36})$/i;
 
 /**
+ * Path segments that may carry identifiers or secrets: ids, tokens (JWT / base64url),
+ * emails, phone numbers, and any long mixed letter+digit string. Collapsed to `{id}` so the
+ * summary is safe to share.
+ */
+export function isSensitiveSegment(raw: string): boolean {
+  let seg: string;
+  try {
+    seg = decodeURIComponent(raw);
+  } catch {
+    seg = raw;
+  }
+  if (!seg) return false;
+  if (ID_SEGMENT.test(seg)) return true;
+  if (seg.includes('@')) return true; // email
+  if (/^\+?\d[\d\s().-]{5,}$/.test(seg)) return true; // phone-like
+  if (/^[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(\.[A-Za-z0-9_-]+)?$/.test(seg) && !/\.(json|html?|php|aspx?)$/i.test(seg)) {
+    return true; // JWT-ish / dotted token
+  }
+  if (seg.length >= 16 && /[A-Za-z]/.test(seg) && /\d/.test(seg)) return true; // long mixed token or slug-with-id
+  if (seg.length >= 32) return true;
+  return false;
+}
+
+/**
  * Reduces a HAR recording to the API calls that matter for mapping endpoints:
  * anything that isn't GET, plus GETs that return JSON. Static assets are dropped.
  */
@@ -44,7 +68,7 @@ export function summarizeHar(har: HarLike, hostFilter?: (host: string) => boolea
       url.origin +
       url.pathname
         .split('/')
-        .map((seg) => (ID_SEGMENT.test(seg) ? '{id}' : seg))
+        .map((seg) => (isSensitiveSegment(seg) ? '{id}' : seg))
         .join('/');
     const key = `${request.method} ${pattern}`;
     const existing = calls.get(key);
