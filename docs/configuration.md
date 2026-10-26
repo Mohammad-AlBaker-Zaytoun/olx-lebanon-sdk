@@ -75,7 +75,7 @@ The CLI (`olx-lb`) and the REST service read settings from the environment, and 
 | `OLX_REQUEST_LOG_FILE` | `logs/requests.jsonl` | Method, path, status and timing of each call to OLX. |
 | `OLX_EXTRA_HOSTS` | set by `init` | Hosts the OLX website uses, recorded by `login` and `capture`. |
 | `OLX_CAPTURE_HEADERS` | — | Extra request headers to keep at login. |
-| `OLX_ENDPOINTS_FILE` | `config/endpoints.json` | Optional endpoint overrides, if OLX moves one. |
+| `OLX_ENDPOINTS_FILE` | `config/endpoints.json` | Optional. If the file exists, it **replaces** the built-in endpoint map, so it must list every endpoint (start from `config/endpoints.example.json`). In code, the `endpoints` option is merged instead. |
 | `OLX_ADAPTER` | `olx-lebanon` | `placeholder` only for building a custom adapter. |
 | `OLX_BASE_URL` | `https://www.olx.com.lb` | https only (http for localhost, for testing). |
 

@@ -174,3 +174,24 @@ describe('OpenAPI document', () => {
     expect(JSON.parse(readFileSync('openapi.json', 'utf8'))).toEqual(JSON.parse(JSON.stringify(openApiDocument)));
   });
 });
+
+describe('internal errors', () => {
+  it('are logged with the request id, and the caller only sees internal_error', async () => {
+    const error = vi.fn();
+    const app = buildServer({
+      apiKey: KEY,
+      queue: new JobQueue(async () => ({})),
+      store: new MemorySyncStore(),
+      resolve: { link: vi.fn(), forget: vi.fn() },
+      status: async () => {
+        throw new Error('database is down');
+      },
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error },
+    });
+    const res = await app.inject({ method: 'GET', url: '/v1/status', headers: { ...auth, 'x-request-id': 'req-7' } });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ error: { code: 'internal_error', message: 'Internal error', requestId: 'req-7' } });
+    expect(res.body).not.toContain('database is down');
+    expect(error).toHaveBeenCalledWith('Request failed', expect.objectContaining({ requestId: 'req-7', error: 'database is down' }));
+  });
+});

@@ -97,3 +97,15 @@ describe('JsonFileSyncStore', () => {
     expect(await new JsonFileSyncStore(file).all()).toEqual([]);
   });
 });
+
+describe('upsert with force', () => {
+  it('re-sends the photos too, so a new picture behind the same URL reaches OLX', async () => {
+    const listings = fakeListings();
+    const sync = new SyncService({ listings, store: new MemorySyncStore() });
+    await sync.upsert('P1', product);
+    await sync.upsert('P1', { ...product, price: 99 });
+    await sync.upsert('P1', { ...product, price: 99 }, { force: true });
+    const opts = vi.mocked(listings.update).mock.calls.map((c) => c[2]);
+    expect(opts).toEqual([{ photosUnchanged: true }, { photosUnchanged: false }]);
+  });
+});

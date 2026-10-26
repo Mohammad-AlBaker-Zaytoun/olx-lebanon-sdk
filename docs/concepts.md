@@ -67,7 +67,7 @@ Right before a create request leaves (after pacing and photo uploads), the produ
 - **The answer is lost** (timeout, connection reset, a 5xx, an answer the SDK can't read): the call throws `outcome_unknown`, and the product is **parked** as `needs_reconcile`. The ad may or may not exist.
 - **The process crashes mid-create:** the `creating` marker stays, which also counts as parked.
 
-When an edit finds that the ad no longer exists on OLX (deleted by hand, expired), the link is marked `gone`.
+When an edit finds that the ad no longer exists on OLX (deleted by hand, expired), the link is marked `gone`. One exception: an edit with **new photos** first looks the ad up in My ads (to remove its old photos), and if it isn't there, the edit stops with an `sdk_error` before anything is sent, and the link is left as it is. Check the ad on OLX, then `remove` or `forget` the product.
 
 A parked or gone product throws `reconcile_required` on every `upsert` until someone decides:
 
@@ -99,7 +99,7 @@ In practice: a sync of 20 changed products takes about 25 minutes. Run it in the
 
 ## Photos
 
-`images` is a list of up to 20 sources:
+`images` is a list of up to 20 sources (OLX's limit, checked before sending, like the 70-character title and 4,096-character description; a catalog's `limits` can change them):
 
 | Source | Use for |
 | --- | --- |
@@ -110,7 +110,7 @@ In practice: a sync of 20 changed products takes about 25 minutes. Run it in the
 JPEG, PNG, WebP and GIF, up to 10 MB each. The SDK downloads each photo and uploads it to OLX's own storage; your session never goes with a download or an upload.
 
 - **`ads.update`:** leave `images` out to keep the ad's photos; pass `images` to replace them all (the old ones are removed from the ad).
-- **`sync.upsert`:** photos are re-uploaded only when the photo list changed (same URLs in the same order means unchanged). Change the URL when the picture changes, for example with a version in the file name.
+- **`sync.upsert`:** photos are re-uploaded only when the photo list changed (same URLs in the same order means unchanged). When the picture changes but the URL doesn't, change the URL (for example `photo.jpg?v=2`) or call `upsert` with `{ force: true }`, which re-sends the photos too.
 - **Over REST,** photos are URL-only, so a caller can't make the service read local files.
 
 ## Ad status
@@ -124,7 +124,7 @@ JPEG, PNG, WebP and GIF, up to 10 MB each. The SDK downloads each photo and uplo
 | `expired`, `deleted` | No longer live. |
 | `unknown` | The status could not be read. |
 
-The status is read from My ads right after each write. It isn't refreshed later by itself; `olx.ads.status(adId)` reads it again, for example after you buy a package.
+The status is read from My ads right after each write. It isn't refreshed later by itself; `olx.ads.status(adId)` reads it again, for example after you buy a package. It searches My ads (up to 50 pages of 20 by default) and returns `undefined` if the ad isn't there.
 
 ## Categories, fields and locations
 

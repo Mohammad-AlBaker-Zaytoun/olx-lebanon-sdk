@@ -5,6 +5,7 @@ import { isSafePathParam } from '../endpoints.js';
 import { ForgetConflictError, LinkConflictError, toErrorInfo } from '../errors.js';
 import { RestListingSchema } from '../listings/types.js';
 import type { SyncRecord, SyncStore } from '../sync/SyncStore.js';
+import type { Logger } from '../logger.js';
 import { openApiDocument } from './openapi.js';
 import { QueueFullError, QueueStoppedError, type JobQueue } from './queue.js';
 import { stripRaw } from './webhook.js';
@@ -19,6 +20,8 @@ export interface ServerDeps {
     forget(productId: string, opts?: { force?: boolean }): Promise<boolean>;
   };
   status: () => Promise<Record<string, unknown>>;
+  /** Unexpected errors (500 internal_error) are logged here, with the request id. */
+  logger?: Logger;
 }
 
 /**
@@ -196,9 +199,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
     const status = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
     // Client errors (bad JSON, wrong content type) are safe to explain; internal errors are not.
-    return status === 500
-      ? fail(req, reply, 500, 'internal_error', 'Internal error')
-      : fail(req, reply, status, 'bad_request', err.message);
+    if (status === 500) {
+      deps.logger?.error('Request failed', { requestId: req.id, method: req.method, path: req.routeOptions.url, error: err.message, stack: err.stack });
+      return fail(req, reply, 500, 'internal_error', 'Internal error');
+    }
+    return fail(req, reply, status, 'bad_request', err.message);
   });
 
   return app;

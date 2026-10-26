@@ -13,14 +13,14 @@ Start with `npx olx-lb check`: it is read-only and shows whether the session wor
 **`Cannot find package 'playwright'` or a browser error on `olx-lb login`**
 Sign-in needs Playwright and its browser: `npm install -D playwright && npx playwright install chromium`. Only the sign-in step needs it; your app doesn't.
 
-**`ERR_REQUIRE_ESM`, or `require() of ES Module`**
+**`ERR_REQUIRE_ESM`, `require() of ES Module`, or `ERR_PACKAGE_PATH_NOT_EXPORTED`**
 The package is ESM. Use `import`, or see [CommonJS projects](node.md#commonjs-projects).
 
 **`npm install` skipped dev dependencies (`tsc` or `vitest` not found)**
 `NODE_ENV=production` is set in your shell, so npm leaves out dev dependencies. Clear it for the install: `NODE_ENV= npm install` (Windows cmd: `set NODE_ENV=&& npm install`).
 
-**`createOlxClient: accessToken looks empty or malformed`**
-The variable is missing or wrong in this environment. Print `Boolean(process.env.OLX_ACCESS_TOKEN)` where the client is created: in Next.js, `.env.local` is read at startup, so restart `next dev` after changing it, and set the variable in your host's settings for deployments.
+**`createOlxClient: accessToken looks empty or malformed`, or `auth_failed` "No OLX session" on the first call**
+The token variable is empty or cut short (the first message), or not set at all in this environment (the second). Print `Boolean(process.env.OLX_ACCESS_TOKEN)` where the client is created: in Next.js, `.env.local` is read at startup, so restart `next dev` after changing it, and set the variable in your host's settings for deployments.
 
 **`Invalid configuration: …`**
 The CLI or REST service found a bad value in `.env`; the message names the variable. `SERVER_API_KEY` and `WEBHOOK_SECRET` need 16 or more characters and must differ.
@@ -55,10 +55,13 @@ OLX may or may not have created the ad. Don't resend it. With `sync`, the produc
 It is parked, or its ad was removed on OLX. Resolve it as above; the error message says which.
 
 **`image_upload_failed`**
-The message names the photo and the reason. Common ones: the URL is plain http or on a private network (allow the host with `allowedImageHosts` / `OLX_IMAGE_HOSTS`), the file is over 10 MB, the server answered with an error page instead of an image, or a redirect went to a host that isn't allowed.
+The message names the photo and the reason. Common ones: a local file that doesn't exist, the URL is plain http or on a private network (allow the host with `allowedImageHosts` / `OLX_IMAGE_HOSTS`), the file is over 10 MB, the server answered with an error page instead of an image, or a redirect went to a host that isn't allowed.
 
 **The photos didn't change after an update**
 With `ads.update`, pass `images` to replace them; leaving it out keeps the current photos. With `sync`, photos are re-uploaded only when the list of sources changes, so a new picture at the same URL isn't noticed. Change the URL (for example `photo.jpg?v=2`), or call `upsert` with `{ force: true }`.
+
+**`Ad … was not found in "My ads", so its current photos are unknown; the edit was not sent`**
+An edit with new photos first reads the ad's current photos from My ads. The ad was removed on OLX, or is older than the pages searched. Check it on OLX; if it's gone, `sync.remove` (or `sync.forget`) the product and sync it again.
 
 **Posting worked before and now fails for every product**
 OLX may have changed its website. Update the SDK first. If the latest version still fails, see [When OLX changes its website](concepts.md#when-olx-changes-its-website).

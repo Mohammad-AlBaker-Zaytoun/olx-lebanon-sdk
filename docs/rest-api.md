@@ -104,7 +104,7 @@ Check `session.loggedIn` and `needsAttention` from your monitoring.
 
 | Field | |
 | --- | --- |
-| `title`, `description` | Required. Up to 70 and 4,096 characters. |
+| `title`, `description` | Required. Up to 70 and 4,096 characters (checked when the job runs: a longer one fails as `invalid_listing`). |
 | `price` | A number, or a decimal string such as `"899.00"` (as SQL decimals often arrive). |
 | `currency` | `USD` (default) or `LBP`. |
 | `categoryId` or `categoryKey` | OLX's category id, or a key from `config/catalog.json`. Exactly one. |
@@ -154,17 +154,18 @@ Every error has one shape. `code` is stable; branch on it, not on the message.
 | `code` | HTTP | Meaning |
 | --- | --- | --- |
 | `unauthorized` | 401 | Missing or wrong `X-Api-Key` |
-| `invalid_product_id`, `invalid_listing`, `invalid_resolution`, `bad_request` | 400 | Fix the request; `details.issues` says what |
-| `not_found` | 404 | No such link, job or route (old unversioned paths too) |
+| `invalid_product_id`, `invalid_listing`, `invalid_resolution` | 400 | Fix the request; `details.issues` says what |
+| `bad_request` | 400, or another 4xx (e.g. 415 for a wrong `Content-Type`) | The request couldn't be read; the message says why |
+| `not_found` | 404 | No such link, job or route (old unversioned paths too). Without a valid key, unknown routes answer 401 |
 | `link_conflict`, `healthy_link` | 409 | A resolve would orphan or share an ad; `details.adId` |
 | `payload_too_large` | 413 | Body over 1 MB |
 | `queue_full` | 429 | Too many products waiting; retry after `Retry-After` |
 | `shutting_down` | 503 | Stopping; retry after it restarts (`Retry-After`) |
-| `internal_error` | 500 | Unexpected; details are in the service log |
+| `internal_error` | 500 | Unexpected; the error is in the service log with the request id |
 
 A failed **job** reports the same shape in `job.error`, with the SDK's codes (`olx_rejected`, `auth_failed`, `outcome_unknown`…). The full list, with what to do for each, is in [Errors](errors.md).
 
-**Request ids.** Each response carries `X-Request-Id`. Send your own (letters, digits, `. _ : -`, up to 64 characters) and it is echoed back and logged, so both sides' logs line up.
+**Request ids.** Each response carries `X-Request-Id`. Send your own (letters, digits, `. _ : -`, up to 64 characters) and it is echoed back, and included when the service logs an internal error, so both sides' logs line up.
 
 ## Parked products
 
@@ -233,6 +234,6 @@ On stop (Ctrl+C, SIGTERM, a service stop), the running job finishes, waiting job
 ## Security
 
 - The service binds to `127.0.0.1` by default. Keep it on the same machine or private network as your backend; to expose it, put it behind a reverse proxy with TLS and keep the API key.
-- The API key check runs in constant time. Internal error details stay in the service log.
+- The API key check runs in constant time. Internal error details are never returned; they go to the service log.
 - Photo URLs must be https and resolve to public addresses, so a caller can't point the service at your internal network. Redirects are re-checked on every hop, and downloads stop at 10 MB. If your photos are on a LAN host or plain http, list it in `OLX_IMAGE_HOSTS`; listed hosts are trusted as-is. On a server with internal services, setting `OLX_IMAGE_HOSTS` to your image host is the safest choice.
 - See also [Security notes](../README.md#security) for the session files and captures.

@@ -179,7 +179,9 @@ export class SyncService {
     let ad: OlxAd;
     try {
       ad = await this.d.listings.update(existing.adId, input, {
-        photosUnchanged: existing.imagesHash !== undefined && existing.imagesHash === hashImages(input.images),
+        // `force` re-sends everything, photos included (e.g. a new picture behind the same URL).
+        photosUnchanged:
+          !opts.force && existing.imagesHash !== undefined && existing.imagesHash === hashImages(input.images),
       });
     } catch (err) {
       if (isGone(err)) {

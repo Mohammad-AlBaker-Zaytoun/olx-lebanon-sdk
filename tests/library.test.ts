@@ -270,3 +270,19 @@ describe('package entry points', () => {
     }
   });
 });
+
+describe('checks before anything is sent', () => {
+  const olx = createOlxClient({ accessToken: 'x'.repeat(40), fetch: vi.fn(async () => jsonResponse({})) as unknown as typeof fetch });
+  const ad = { title: 'Laptop', description: 'New', price: 899, categoryId: '175', locationId: '47' };
+
+  it("applies OLX's title, description and photo limits without a catalog", async () => {
+    await expect(olx.ads.create({ ...ad, title: 'x'.repeat(71) })).rejects.toMatchObject({ code: 'invalid_listing', issues: [expect.stringMatching(/OLX allows 70/)] });
+    await expect(olx.ads.create({ ...ad, images: Array.from({ length: 21 }, (_, i) => ({ url: `https://a.example/${i}.jpg` })) })).rejects.toMatchObject({ code: 'invalid_listing' });
+  });
+
+  it('a missing photo file is image_upload_failed, naming the file', async () => {
+    const { ImageUploader, placeholderAdapter } = sdk;
+    const up = new ImageUploader({ http: {} as never, adapter: placeholderAdapter });
+    await expect(up.upload({ path: '/nonexistent/photo.jpg' })).rejects.toMatchObject({ code: 'image_upload_failed', message: expect.stringMatching(/photo\.jpg.*file not found/) });
+  });
+});

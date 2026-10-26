@@ -121,7 +121,7 @@ createOlxClient({ accessToken, logger: createLogger('info') }); // JSON lines on
 createOlxClient({ accessToken, logger: { debug: (m, x) => log.debug(x, m), info: (m, x) => log.info(x, m), warn: (m, x) => log.warn(x, m), error: (m, x) => log.error(x, m) } });
 ```
 
-The SDK never logs tokens, cookies, request bodies or query strings. For an audit trail of calls to OLX (method, path, status, timing), pass `requestLog: new FileRequestLog('logs/requests.jsonl')`.
+The SDK never logs tokens, cookies, request bodies or query strings. Failures include OLX's validation messages, so you can see what to fix. For an audit trail of calls to OLX (method, path, status, timing), pass `requestLog: new FileRequestLog('logs/requests.jsonl')`.
 
 ## Running the REST service from your code
 

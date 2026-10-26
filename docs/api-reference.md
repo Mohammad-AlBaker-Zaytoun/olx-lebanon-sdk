@@ -47,7 +47,7 @@ Your ads by their OLX id. Nothing is stored on your side.
 | `delete(adId)` | `Promise<void>` | Removes the ad. |
 | `list({ page?, perPage? })` | `Promise<{ ads: OlxAd[]; hasMore: boolean }>` | One page of My ads, newest first. `perPage` 1–50, default 20. |
 | `find(adId, { maxPages? })` | `Promise<OlxAd \| undefined>` | Looks for one of your ads in My ads (up to 50 pages by default). |
-| `status(adId)` | `Promise<AdStatus \| undefined>` | Reads an ad's current status. |
+| `status(adId, { maxPages? })` | `Promise<AdStatus \| undefined>` | Reads an ad's current status from My ads (up to 50 pages by default); `undefined` if it isn't there. |
 
 `create`, `update` and `delete` are writes: [paced](concepts.md#pacing) and never retried.
 
@@ -95,7 +95,7 @@ OLX's public catalog. No token needed: `new OlxCatalog()` works on its own.
 
 | Field | Type | |
 | --- | --- | --- |
-| `title` | `string` | Required, up to 70 characters. |
+| `title` | `string` | Required, up to 70 characters (OLX's limit, checked before sending). |
 | `description` | `string` | Required, up to 4,096 characters. |
 | `price` | `number` | In `currency`. |
 | `currency` | `'USD' \| 'LBP'` | Default `USD`. |

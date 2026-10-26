@@ -59,7 +59,7 @@ export class AdsApi {
   }
 
   /** The ad's current state, or undefined if it isn't in your newest ads. */
-  status(adId: string): Promise<AdStatus | undefined> {
-    return this.listings.lookupStatus(adId);
+  async status(adId: string, opts: { maxPages?: number } = {}): Promise<AdStatus | undefined> {
+    return (await this.find(adId, opts))?.status;
   }
 }

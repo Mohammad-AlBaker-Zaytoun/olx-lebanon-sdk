@@ -37,6 +37,9 @@ const LocationSchema = z.object({
   label: z.string().optional(),
 });
 
+/** OLX Lebanon's posting form limits, checked before anything is sent. */
+export const OLX_LB_LIMITS = { titleMaxLength: 70, descriptionMaxLength: 4096, maxImages: 20 } as const;
+
 export const CatalogSchema = z.object({
   limits: z
     .object({
@@ -147,7 +150,8 @@ export class CatalogMapper {
       if (tooBroad) issues.push(tooBroad);
     }
 
-    const { titleMaxLength, descriptionMaxLength, maxImages } = this.catalog.limits;
+    // OLX's own limits apply unless the catalog sets its own.
+    const { titleMaxLength, descriptionMaxLength, maxImages } = { ...OLX_LB_LIMITS, ...this.catalog.limits };
     const title = input.title.trim();
     const description = input.description.trim();
     if (!title) issues.push('Title is empty');

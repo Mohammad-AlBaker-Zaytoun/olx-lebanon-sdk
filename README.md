@@ -128,7 +128,7 @@ Verified against live OLX Lebanon on 26 October 2026: creating an ad with a phot
 - `session.json` keeps only OLX's cookies and storage. If you sign in with Google or Facebook, those sites' cookies are not saved.
 - Locations ship with the SDK. Only the maintainer script `npm run update-locations` contacts OLX's location search, with the website's own read-only key from a capture, which is never printed or saved.
 - Photo downloads refuse plain http and private or internal addresses unless you allow a host. Redirects are re-checked on every hop, and downloads stop at 10 MB. (Known limit: the address check and the download resolve DNS separately. On a server with internal services, allow only your image host.)
-- Logs and the request log record method, path, status and timing, never bodies, cookies, tokens or query strings.
+- The request log records method, path, status and timing only. Logs never contain tokens, cookies, request bodies or query strings; a failed job's log line includes OLX's validation message, which is what you need to fix the product.
 - The REST service binds to `127.0.0.1`, checks its API key in constant time, accepts only URL photos, and never returns raw OLX responses or internal error details.
 
 Found a security problem? Please report it privately to the maintainer rather than in a public issue.

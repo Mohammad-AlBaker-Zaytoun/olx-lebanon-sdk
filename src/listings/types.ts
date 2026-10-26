@@ -119,7 +119,7 @@ export const RestListingSchema = z.object({
           }, 'image URLs must not contain credentials'),
       }),
     )
-    .max(30)
+    .max(20)
     .default([]),
 })
   .refine((l) => (l.categoryKey === undefined) !== (l.categoryId === undefined), {

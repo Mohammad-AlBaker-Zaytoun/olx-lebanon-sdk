@@ -140,8 +140,11 @@ export class ImageUploader {
         contentType: img.contentType ?? MIME[extname(img.filename).toLowerCase()] ?? 'application/octet-stream',
       };
     } else if ('path' in img) {
+      const data = await readFile(img.path).catch((err: NodeJS.ErrnoException) => {
+        throw new ImageUploadError(`Image ${n} (${basename(img.path)}): ${err.code === 'ENOENT' ? 'file not found' : `cannot read the file (${err.code ?? err.message})`}`);
+      });
       loaded = {
-        data: await readFile(img.path),
+        data,
         filename: basename(img.path),
         contentType: MIME[extname(img.path).toLowerCase()] ?? 'application/octet-stream',
       };

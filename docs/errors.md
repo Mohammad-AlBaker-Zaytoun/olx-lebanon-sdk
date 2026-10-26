@@ -1,6 +1,6 @@
 # Errors
 
-Every error the SDK throws is an `OlxSdkError` with a stable `code`. The same codes appear in REST job results and webhooks. Codes are part of the public API: they don't change in minor versions, while messages may be reworded at any time. Branch on `err.code`.
+Errors from OLX calls, validation, photos and sync are `OlxSdkError`s with a stable `code`. (Programming mistakes, such as invalid options to `createOlxClient`, throw a `TypeError`, and errors from your own store pass through unchanged.) The same codes appear in REST job results and webhooks. Codes are part of the public API: they don't change in minor versions, while messages may be reworded at any time. Branch on `err.code`.
 
 - [Handling errors](#handling-errors)
 - [Codes](#codes)
@@ -42,7 +42,7 @@ try {
   details: { olxMessage: 'Please select a more specific location.', olxErrors: { location_id: ['Please select a more specific location.'] } } }
 ```
 
-Anything that isn't an SDK error becomes `{ code: 'internal_error', message }`. `toErrorInfo` never includes tokens, cookies or raw responses.
+Anything that isn't an SDK error becomes `{ code: 'internal_error', message }`. `toErrorInfo` never includes tokens, cookies or raw responses; `details.olxMessage` and `olxErrors` are OLX's validation messages only.
 
 `instanceof` with the subclasses works too, and gives typed access to their fields (`OlxHttpError.status` and `.body`, `MappingError.issues`, `ReconcileRequiredError.reason`…).
 
@@ -51,21 +51,21 @@ Anything that isn't an SDK error becomes `{ code: 'internal_error', message }`. 
 | `code` | Class | What happened | Safe to retry? | What to do |
 | --- | --- | --- | --- | --- |
 | `invalid_listing` | `MappingError` | The input failed validation before anything was sent. `details.issues` lists each problem ("Title is 83 characters; OLX allows 70"). | After fixing | Fix the product. |
-| `olx_rejected` | `OlxHttpError` | OLX refused the request. `status` is OLX's HTTP status; `details.olxErrors` names the fields (see [below](#olxs-own-validation-messages)). | After fixing | Fix the product. A 404 on edit means the ad is gone (`sync` handles that for you). |
+| `olx_rejected` | `OlxHttpError` | OLX refused the request. `status` is OLX's HTTP status; `details.olxErrors` names the fields (see [below](#olxs-own-validation-messages)). Also a photo upload that OLX's storage refused (endpoint `signedUpload`). | After fixing | Fix the product. A 404 on edit means the ad is gone (`sync` marks the link `gone`). |
 | `auth_failed` | `AuthError` | No session, or OLX rejected the token (401/403). | No | `npx olx-lb login`, then update `OLX_ACCESS_TOKEN`. |
 | `outcome_unknown` | `UncertainWriteError` | A write was sent, but its answer was lost (timeout, 5xx, an answer that couldn't be read). The ad **may exist**. | **No** | Don't resend blindly. Check My ads. `sync` parks the product for you. |
-| `image_upload_failed` | `ImageUploadError` | A photo couldn't be used: the download failed, it isn't a JPEG/PNG/WebP/GIF, it is over 10 MB, its URL isn't allowed, or the upload to OLX failed. The message says which photo. Nothing was posted. | Yes | Fix the photo if the message says so; otherwise retry. |
+| `image_upload_failed` | `ImageUploadError` | A photo couldn't be used: the file or download failed, it isn't a JPEG/PNG/WebP/GIF, it is over 10 MB, its URL isn't allowed, or the upload to OLX was cut off. The message says which photo. Nothing was posted. | Yes | Fix the photo if the message says so; otherwise retry. |
 | `reconcile_required` | `ReconcileRequiredError` | `sync`: the product is parked (`details.reason: 'uncertain_create'`) or its ad was removed on OLX (`'ad_gone'`). | After resolving | `sync.link(productId, adId)` if the ad exists, `sync.forget(productId)` if not. |
 | `link_conflict` | `LinkConflictError` | `sync.link` would replace a healthy link to another ad, or take an ad another product uses (`details.adId`, `details.otherProductId`). | — | Pass `{ replace: true }` if you mean it. |
 | `healthy_link` | `ForgetConflictError` | `sync.forget` on a healthy link: the ad would stay live but unmanaged (`details.adId`). | — | Use `sync.remove` to take the ad down, or `{ force: true }`. |
 | `endpoint_not_configured` | `EndpointNotConfiguredError` | A custom adapter needs an endpoint you didn't configure. | — | Only with custom `endpoints` / `adapter`. |
 | `sdk_error` | `OlxSdkError` | Anything else the SDK refused, such as an invalid ad id or a failed catalog lookup. | Depends | Read the message. |
 
-Two more codes appear only in job results: `internal_error` (an unexpected failure; the stack is in the log) and `cancelled` (the REST service stopped before the job ran; send it again).
+Two more codes are not SDK errors: `internal_error` (anything unexpected, such as a database error in your store; `toErrorInfo` gives it this code, and the REST service logs the message) and `cancelled` (a REST job dropped because the service stopped before it ran; send it again).
 
 ### Why writes are never retried automatically
 
-Reads (status, My ads, the catalog) are retried on network errors and 5xx. Writes never are: if a create times out, OLX may have posted it, and a retry would post it twice. That is what `outcome_unknown` and parking are for.
+Some reads (pages of My ads, the account details) are retried on network errors, 429 and 5xx; quick lookups and the catalog fail at once, and you can simply call again. Writes are never retried: if a create times out, OLX may have posted it, and a retry would post it twice. That is what `outcome_unknown` and parking are for.
 
 ## REST-only codes
 

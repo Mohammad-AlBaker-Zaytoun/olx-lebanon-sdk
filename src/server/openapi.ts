@@ -194,7 +194,7 @@ export const openApiDocument = {
           },
           images: {
             type: 'array',
-            maxItems: 30,
+            maxItems: 20,
             items: { type: 'object', properties: { url: { type: 'string', format: 'uri' } }, required: ['url'] },
           },
         },

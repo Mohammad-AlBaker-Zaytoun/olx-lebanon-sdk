@@ -48,6 +48,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Runnin
 
   const app = buildServer({
     apiKey,
+    logger,
     queue,
     store: client.syncStore,
     resolve: {

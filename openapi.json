@@ -688,7 +688,7 @@
           },
           "images": {
             "type": "array",
-            "maxItems": 30,
+            "maxItems": 20,
             "items": {
               "type": "object",
               "properties": {
