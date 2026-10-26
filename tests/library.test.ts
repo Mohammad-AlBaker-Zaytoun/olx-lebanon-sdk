@@ -234,3 +234,39 @@ describe('client.catalog', () => {
     expect(catalog.locations().length).toBeGreaterThan(600);
   });
 });
+
+describe('OLX_ACCESS_TOKEN for the CLI and the REST service', () => {
+  const token = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJlLXZhbHVl';
+
+  it('is used instead of the session file', async () => {
+    const config = sdk.loadConfig({ OLX_ACCESS_TOKEN: token, OLX_SESSION_FILE: '/nonexistent/session.json' });
+    const client = sdk.OlxClient.fromConfig(config, { requestLog: new sdk.MemoryRequestLog() });
+    const status = await client.session.status();
+    expect(status).toMatchObject({ loggedIn: true, savedAt: 'access-token', capturedHeaders: ['authorization'] });
+  });
+
+  it('accepts a "Bearer " prefix and rejects an empty or malformed value as invalid configuration', () => {
+    expect(sdk.loadConfig({ OLX_ACCESS_TOKEN: `Bearer ${token}` }).accessToken).toBe(`Bearer ${token}`);
+    expect(sdk.sessionFromAccessToken(`Bearer ${token}`).headers.authorization).toBe(`Bearer ${token}`);
+    expect(() => sdk.loadConfig({ OLX_ACCESS_TOKEN: 'short' })).toThrow(/OLX_ACCESS_TOKEN looks empty or malformed/);
+    expect(() => sdk.loadConfig({ OLX_ACCESS_TOKEN: 'a b c d e f g h i j k l m n' })).toThrow(/OLX_ACCESS_TOKEN/);
+  });
+
+  it('without it, the session file is used as before', async () => {
+    const client = sdk.OlxClient.fromConfig(sdk.loadConfig({ OLX_SESSION_FILE: '/nonexistent/session.json' }), {
+      requestLog: new sdk.MemoryRequestLog(),
+    });
+    expect((await client.session.status()).loggedIn).toBe(false);
+  });
+});
+
+describe('package entry points', () => {
+  it('resolve for import and for require() (Node 22.12+ loads ESM through require)', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const pkg = JSON.parse(await readFile('package.json', 'utf8')) as { exports: Record<string, unknown> };
+    for (const [entry, target] of Object.entries(pkg.exports)) {
+      if (typeof target === 'string') continue;
+      expect(target, entry).toMatchObject({ types: expect.any(String), import: expect.any(String), default: expect.any(String) });
+    }
+  });
+});

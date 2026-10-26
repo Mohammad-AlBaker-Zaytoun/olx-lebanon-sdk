@@ -91,6 +91,7 @@ export {
   FileSessionStore,
   MemorySessionStore,
   cookieHeaderFor,
+  sessionFromAccessToken,
   type SessionData,
   type SessionStore,
   type StoredCookie,

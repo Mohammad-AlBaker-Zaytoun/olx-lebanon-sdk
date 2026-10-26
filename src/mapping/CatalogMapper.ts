@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
+import { OLX_LB_LOCATION_ROWS } from '../data/locations.js';
 import { MappingError, OlxSdkError } from '../errors.js';
 import type { AttributeValue, ListingInput } from '../listings/types.js';
 
@@ -70,6 +71,19 @@ function lookupValue(values: Record<string, AttributeValue>, value: AttributeVal
   return value;
 }
 
+/**
+ * OLX rejects ads placed in a whole district or the country ("Please select a more specific
+ * location"). Catch that before sending, using the shipped location snapshot. Ids that aren't
+ * in the snapshot pass, in case OLX added an area since.
+ */
+function broadLocation(id: string): string | undefined {
+  const row = OLX_LB_LOCATION_ROWS.find((r) => String(r[0]) === id);
+  if (!row || row[4] >= 2) return undefined;
+  const areas = OLX_LB_LOCATION_ROWS.filter((r) => r[5] === row[0] && r[4] >= 2).slice(0, 3);
+  const hint = areas.length ? `, e.g. ${areas.map((r) => `${r[0]} (${r[2]})`).join(', ')}` : '';
+  return `locationId ${id} is ${row[4] === 0 ? 'the whole country' : `the district "${row[2]}"`}; OLX needs an area in it${hint}`;
+}
+
 export function parseCatalog(raw: unknown): Catalog {
   const parsed = CatalogSchema.safeParse(raw);
   if (!parsed.success) {
@@ -127,6 +141,10 @@ export class CatalogMapper {
       } else locationId = location.olxLocationId;
     } else {
       issues.push('Give the location: locationId (an OLX area id) or locationKey (from your catalog file)');
+    }
+    if (locationId) {
+      const tooBroad = broadLocation(locationId);
+      if (tooBroad) issues.push(tooBroad);
     }
 
     const { titleMaxLength, descriptionMaxLength, maxImages } = this.catalog.limits;

@@ -9,15 +9,18 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./server": {
       "types": "./dist/server/exports.d.ts",
-      "import": "./dist/server/exports.js"
+      "import": "./dist/server/exports.js",
+      "default": "./dist/server/exports.js"
     },
     "./tools": {
       "types": "./dist/tools/index.d.ts",
-      "import": "./dist/tools/index.js"
+      "import": "./dist/tools/index.js",
+      "default": "./dist/tools/index.js"
     },
     "./package.json": "./package.json",
     "./openapi.json": "./openapi.json"
@@ -51,7 +54,7 @@
     "live-test": "tsx src/cli/index.ts test-post",
     "update-locations": "tsx scripts/update-locations.ts",
     "openapi": "tsx scripts/write-openapi.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p examples",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -88,7 +91,10 @@
   "devDependencies": {
     "@readme/openapi-parser": "^10.0.0",
     "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
     "playwright": "^1.64.1",
+    "server-only": "^0.0.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9"

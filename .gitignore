@@ -15,3 +15,4 @@ coverage/
 # Your own copies of config/*.example.json
 config/endpoints.json
 config/catalog.json
+__pycache__/

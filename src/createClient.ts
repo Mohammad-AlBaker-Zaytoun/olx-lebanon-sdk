@@ -7,7 +7,7 @@ import { OLX_LB_ENDPOINTS } from './listings/olxLebanon.js';
 import type { ContactSettings } from './listings/types.js';
 import { silentLogger, type Logger, type RequestLog } from './logger.js';
 import { parseCatalog, type Catalog } from './mapping/CatalogMapper.js';
-import { MemorySessionStore, type SessionData, type SessionStore } from './session/storage.js';
+import { MemorySessionStore, sessionFromAccessToken, type SessionData, type SessionStore } from './session/storage.js';
 import { MemorySyncStore, type SyncStore } from './sync/SyncStore.js';
 
 export const OLX_LB_BASE_URL = 'https://www.olx.com.lb';
@@ -67,21 +67,15 @@ export interface CreateOlxClientOptions {
 export function createOlxClient(options: CreateOlxClientOptions = {}): OlxClient {
   const given = [options.accessToken, options.session, options.sessionStore].filter((v) => v !== undefined);
   if (given.length > 1) throw new TypeError('createOlxClient: pass only one of accessToken, session or sessionStore');
-  if (options.accessToken !== undefined && !/^\S{20,}$/.test(options.accessToken.replace(/^bearer\s+/i, ''))) {
-    throw new TypeError('createOlxClient: accessToken looks empty or malformed');
+  let tokenSession: SessionData | undefined;
+  if (options.accessToken !== undefined) {
+    try {
+      tokenSession = sessionFromAccessToken(options.accessToken);
+    } catch {
+      throw new TypeError('createOlxClient: accessToken looks empty or malformed');
+    }
   }
-  const sessionStore =
-    options.sessionStore ??
-    new MemorySessionStore(
-      options.session ??
-        (options.accessToken
-          ? {
-              cookies: [],
-              headers: { authorization: `Bearer ${options.accessToken.replace(/^bearer\s+/i, '')}` },
-              savedAt: 'access-token',
-            }
-          : null),
-    );
+  const sessionStore = options.sessionStore ?? new MemorySessionStore(options.session ?? tokenSession ?? null);
   return new OlxClient({
     baseUrl: options.baseUrl ?? OLX_LB_BASE_URL,
     endpoints: { ...OLX_LB_ENDPOINTS, ...options.endpoints },

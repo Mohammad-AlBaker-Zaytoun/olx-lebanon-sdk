@@ -120,7 +120,10 @@ export class ForgetConflictError extends OlxSdkError {
   }
 }
 
-/** An image could not be uploaded; no ad request was sent, so it is safe to retry. */
+/**
+ * A photo could not be used: its download failed, it isn't a JPEG/PNG/WebP/GIF, it is too large,
+ * its URL isn't allowed, or the upload to OLX failed. No ad request was sent, so retrying is safe.
+ */
 export class ImageUploadError extends OlxSdkError {
   override readonly code = 'image_upload_failed' as const;
 }

@@ -12,4 +12,4 @@ export {
   type JobType,
 } from './queue.js';
 export { createWebhookNotifier, signWebhook, stripRaw, type WebhookNotifier } from './webhook.js';
-export { startServer, type StartServerOptions } from './start.js';
+export { startServer, type RunningServer, type StartServerOptions } from './start.js';

@@ -24,6 +24,10 @@ const EnvSchema = z.object({
       'OLX_BASE_URL must use https (plain http is only allowed for localhost, for testing)',
     )
     .default('https://www.olx.com.lb'),
+  OLX_ACCESS_TOKEN: z
+    .string()
+    .refine((t) => /^\S{20,}$/.test(t.trim().replace(/^bearer\s+/i, '')), 'OLX_ACCESS_TOKEN looks empty or malformed')
+    .optional(),
   OLX_SESSION_FILE: z.string().default('.olx-session/session.json'),
   OLX_ENDPOINTS_FILE: z.string().default('config/endpoints.json'),
   OLX_CATALOG_FILE: z.string().default('config/catalog.json'),
@@ -62,6 +66,8 @@ export interface WriteLimits {
 
 export interface OlxConfig {
   baseUrl: string;
+  /** From OLX_ACCESS_TOKEN. When set, it is used instead of the session file. */
+  accessToken?: string;
   sessionFile: string;
   endpointsFile: string;
   catalogFile: string;
@@ -108,6 +114,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OlxConfig {
 
   return {
     baseUrl: e.OLX_BASE_URL,
+    accessToken: e.OLX_ACCESS_TOKEN,
     sessionFile: e.OLX_SESSION_FILE,
     endpointsFile: e.OLX_ENDPOINTS_FILE,
     catalogFile: e.OLX_CATALOG_FILE,

@@ -34,7 +34,7 @@ function jwt(payload: Record<string, unknown>): string {
 
 const listing: MappedListing = {
   categoryId: '219',
-  locationId: '2',
+  locationId: '47',
   title: 'Budgie pair',
   description: 'Healthy and friendly',
   price: 111,
@@ -68,7 +68,7 @@ describe('olxLebanonAdapter: request bodies', () => {
       description: 'Healthy and friendly',
       videos: [],
       title: 'Budgie pair',
-      location_id: '2',
+      location_id: '47',
     });
   });
 
@@ -260,7 +260,7 @@ describe('catalog valueMap', () => {
     const mapper = new CatalogMapper(
       parseCatalog({
         categories: { phones: { olxCategoryId: '9', attributeMap: { condition: 'new_used' }, valueMap: { condition: { new: '1', used: '2' } } } },
-        locations: { beirut: { olxLocationId: '2' } },
+        locations: { beirut: { olxLocationId: '47' } },
       }),
     );
     const base = { title: 't', description: 'd', price: 1, categoryKey: 'phones', locationKey: 'beirut' };
@@ -273,7 +273,7 @@ describe('catalog valueMap', () => {
   it("checks the category's USD price range before posting", async () => {
     const { CatalogMapper } = await import('../src/mapping/CatalogMapper.js');
     const mapper = new CatalogMapper(
-      parseCatalog({ categories: { phones: { olxCategoryId: '9', priceLimits: { min: 10, max: 10000 } } }, locations: { b: { olxLocationId: '2' } } }),
+      parseCatalog({ categories: { phones: { olxCategoryId: '9', priceLimits: { min: 10, max: 10000 } } }, locations: { b: { olxLocationId: '47' } } }),
     );
     const base = { title: 't', description: 'd', categoryKey: 'phones', locationKey: 'b' };
     expect(() => mapper.resolve({ ...base, price: 5 })).toThrow(/below OLX's minimum of 10/);
@@ -288,7 +288,7 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
   const endpoints = parseEndpoints(JSON.parse(readFileSync('config/endpoints.example.json', 'utf8')));
   const catalog = parseCatalog({
     categories: { birds: { olxCategoryId: '219', defaults: { species: '2' } } },
-    locations: { beirut: { olxLocationId: '2' } },
+    locations: { beirut: { olxLocationId: '47' } },
   });
   const token = jwt({ exp: 4_000_000_000, aud: 'prod-api' });
   const session: SessionData = {
@@ -517,7 +517,7 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
       description: 'Healthy and friendly',
       videos: [],
       title: 'Budgie pair',
-      location_id: '2',
+      location_id: '47',
     });
   });
 

@@ -416,6 +416,8 @@ describe('image downloads', () => {
     await expect(up.upload({ url: 'https://metadata.example/x.jpg' })).rejects.toThrow(/private or internal/);
     await expect(up.upload({ url: 'http://public.example/x.jpg' })).rejects.toThrow(/only https/);
     await expect(up.upload({ url: 'https://[::1]/x.jpg' })).rejects.toThrow(/private or internal/);
+    // Every photo problem has one stable code, so callers can tell it from other failures.
+    await expect(up.upload({ url: 'http://public.example/x.jpg' })).rejects.toMatchObject({ code: 'image_upload_failed' });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

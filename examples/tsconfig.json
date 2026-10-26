@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "olx-lebanon-sdk": ["../src/index.ts"],
+      "olx-lebanon-sdk/server": ["../src/server/exports.ts"]
+    }
+  },
+  "include": ["**/*.ts"]
+}

@@ -95,3 +95,13 @@ export function cookieHeaderFor(session: SessionData, url: string, nowSec = Date
     .map((c) => `${c.name}=${c.value}`)
     .join('; ');
 }
+
+/**
+ * A session made from an access token alone (OLX accepts the bearer token without cookies).
+ * Accepts the token with or without a leading "Bearer ".
+ */
+export function sessionFromAccessToken(accessToken: string): SessionData {
+  const token = accessToken.trim().replace(/^bearer\s+/i, '');
+  if (!/^\S{20,}$/.test(token)) throw new TypeError('The OLX access token looks empty or malformed');
+  return { cookies: [], headers: { authorization: `Bearer ${token}` }, savedAt: 'access-token' };
+}

@@ -58,3 +58,26 @@ describe('CatalogMapper', () => {
     );
   });
 });
+
+describe('CatalogMapper: locations OLX would reject', () => {
+  const ids = new CatalogMapper(catalog);
+  const ad = { title: 'Laptop', description: 'New', price: 899, categoryId: '175' };
+
+  it('refuses a district or the whole country before anything is sent, and suggests areas', () => {
+    const district = (() => {
+      try {
+        ids.resolve({ ...ad, locationId: '2' });
+      } catch (e) {
+        return e as MappingError;
+      }
+    })();
+    expect(district).toBeInstanceOf(MappingError);
+    expect(district?.issues.join()).toMatch(/district "Beirut".*e\.g\. \d+ \(/);
+    expect(() => ids.resolve({ ...ad, locationId: 1 })).toThrow(MappingError);
+  });
+
+  it('accepts areas, and ids missing from the snapshot (OLX may have added them since)', () => {
+    expect(ids.resolve({ ...ad, locationId: '47' }).locationId).toBe('47');
+    expect(ids.resolve({ ...ad, locationId: '99999999' }).locationId).toBe('99999999');
+  });
+});

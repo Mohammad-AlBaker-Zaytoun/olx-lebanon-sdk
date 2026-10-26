@@ -15,6 +15,11 @@ A library you install in a Node.js or Next.js app and call directly.
 - Stable error codes: every `OlxSdkError` has a `code` (`invalid_listing`, `auth_failed`, `olx_rejected`, `outcome_unknown`, `image_upload_failed`, `reconcile_required`, `link_conflict`, `healthy_link`). `toErrorInfo(err)` turns any error into `{ code, message, status?, details? }`. OLX's own field errors are in `details.olxErrors`.
 - REST: an OpenAPI 3.1 document (`openapi.json`, served at `GET /v1/openapi.json`), validated and checked against the routes in tests. `X-Request-Id` on every response, echoing a safe one from the caller.
 - Verified in a Next.js 15 (webpack) and 16 (Turbopack) app with no configuration.
+- Documentation in `docs/`: getting started, Next.js and Node.js guides, concepts, REST service, API reference, configuration, errors and troubleshooting. Relative links and anchors are checked in tests.
+- `examples/`: Node.js scripts, Next.js route handlers and server actions, a SQL `SyncStore`, and PHP, Python and cURL clients for the REST service. The TypeScript examples are type-checked with the SDK, and the PHP, Python and shell clients run against a local service in tests.
+- `OLX_ACCESS_TOKEN` for the CLI and the REST service: used instead of the session file, for servers where you can't open a browser. `sessionFromAccessToken(token)` builds a session from a token.
+- `require('olx-lebanon-sdk')` works on Node.js 22.12 and later (the entry points now have a `default` condition).
+- A location that is a whole district or the country is refused before sending (`invalid_listing`, with areas to choose from), instead of OLX's 422 "Please select a more specific location".
 
 ### Changed (breaking)
 
@@ -22,6 +27,7 @@ A library you install in a Node.js or Next.js app and call directly.
 - `playwright` is now an optional peer dependency, needed only for `olx-lb login` and `olx-lb capture`.
 - `ListingInput.categoryKey` and `locationKey` are optional; give either the key or the OLX id.
 - `config/endpoints.json` is optional: without it, the built-in endpoints are used.
+- Every photo problem (a failed download, not an image, over 10 MB, a URL that isn't allowed) is now `ImageUploadError` (`image_upload_failed`), instead of a plain `OlxSdkError`.
 - REST: the API moved under `/v1` (e.g. `PUT /v1/products/:id/listing`), and unversioned paths now answer `404 not_found`. Every error is `{ "error": { "code", "message", "details"?, "requestId" } }`, instead of `{ "error": "<code>", … }`. Failed jobs' `error` is `{ code, message, status?, details? }`, instead of `{ name, message }`.
 
 

@@ -2,7 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { readFile } from 'node:fs/promises';
 import { BlockList, isIP } from 'node:net';
 import { basename, extname } from 'node:path';
-import { OlxSdkError } from '../errors.js';
+import { ImageUploadError, OlxSdkError } from '../errors.js';
 import type { OlxHttpClient } from '../http/HttpClient.js';
 import type { OlxAdapter } from './adapter.js';
 import { imageSize } from './imageSize.js';
@@ -113,7 +113,7 @@ export class ImageUploader {
     if (flow) {
       // Read the size first: an unreadable image fails before anything is sent to OLX.
       const size = imageSize(img.data);
-      if (!size) throw new OlxSdkError(`Image ${n} is not a readable JPEG, PNG, WebP or GIF`);
+      if (!size) throw new ImageUploadError(`Image ${n} is not a readable JPEG, PNG, WebP or GIF`);
       const name = flow.newImageName(account);
       // Part of a single ad write: the caller already holds the write slot.
       const raw = await this.o.http.call('signImageUpload', { query: flow.signQuery(name), rateLimit: false });
@@ -150,10 +150,10 @@ export class ImageUploader {
     }
 
     if (loaded.data.byteLength > this.maxBytes) {
-      throw new OlxSdkError(`Image ${n} is larger than ${this.maxBytes} bytes`);
+      throw new ImageUploadError(`Image ${n} is larger than ${this.maxBytes} bytes`);
     }
     if (!loaded.contentType.startsWith('image/')) {
-      throw new OlxSdkError(`Image ${n} is not an image (${loaded.contentType})`);
+      throw new ImageUploadError(`Image ${n} is not an image (${loaded.contentType})`);
     }
     return loaded;
   }
@@ -166,7 +166,7 @@ export class ImageUploader {
     for (let hop = 0; ; hop++) {
       await this.assertAllowed(url, n);
       const remaining = deadline - Date.now();
-      if (remaining <= 0) throw new OlxSdkError(`Image ${n}: image downloads took too long for this listing`);
+      if (remaining <= 0) throw new ImageUploadError(`Image ${n}: image downloads took too long for this listing`);
       // One signal covers headers AND body, so a slowly dripping body is cut off too.
       const signal = AbortSignal.timeout(Math.min(this.o.timeoutMs ?? 20_000, remaining));
       let res: Response;
@@ -175,32 +175,32 @@ export class ImageUploader {
       } catch (err) {
         // Network errors from fetch embed the full URL (query, credentials); never pass them on.
         const reason = (err as Error).name === 'TimeoutError' ? 'timed out' : 'could not connect';
-        throw new OlxSdkError(`Image ${n} (${safeUrl(url)}): download ${reason}`);
+        throw new ImageUploadError(`Image ${n} (${safeUrl(url)}): download ${reason}`);
       }
 
       if (res.status >= 300 && res.status < 400) {
         await res.body?.cancel();
         const location = res.headers.get('location');
-        if (!location || hop >= maxRedirects) throw new OlxSdkError(`Image ${n}: too many or invalid redirects`);
+        if (!location || hop >= maxRedirects) throw new ImageUploadError(`Image ${n}: too many or invalid redirects`);
         url = new URL(location, url); // every hop is re-checked at the top of the loop
         continue;
       }
       if (!res.ok) {
         await res.body?.cancel();
-        throw new OlxSdkError(`Image ${n} (${safeUrl(url)}): download failed with HTTP ${res.status}`);
+        throw new ImageUploadError(`Image ${n} (${safeUrl(url)}): download failed with HTTP ${res.status}`);
       }
 
       const declared = Number(res.headers.get('content-length'));
       if (Number.isFinite(declared) && declared > this.maxBytes) {
         await res.body?.cancel();
-        throw new OlxSdkError(`Image ${n} is larger than ${this.maxBytes} bytes`);
+        throw new ImageUploadError(`Image ${n} is larger than ${this.maxBytes} bytes`);
       }
       let data: Uint8Array;
       try {
         data = await readCapped(res, this.maxBytes, n);
       } catch (err) {
         if (err instanceof OlxSdkError) throw err;
-        throw new OlxSdkError(`Image ${n} (${safeUrl(url)}): download was interrupted`);
+        throw new ImageUploadError(`Image ${n} (${safeUrl(url)}): download was interrupted`);
       }
       const name = basename(url.pathname) || 'image.jpg';
       return {
@@ -214,30 +214,30 @@ export class ImageUploader {
 
   private async assertAllowed(url: URL, n: number): Promise<void> {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-      throw new OlxSdkError(`Image ${n}: unsupported URL scheme ${url.protocol}`);
+      throw new ImageUploadError(`Image ${n}: unsupported URL scheme ${url.protocol}`);
     }
     if (url.username || url.password) {
-      throw new OlxSdkError(`Image ${n}: URLs with embedded credentials are not accepted`);
+      throw new ImageUploadError(`Image ${n}: URLs with embedded credentials are not accepted`);
     }
     const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
     const allowed = this.o.allowedHosts;
     if (allowed) {
       if (!allowed.some((h) => host === h || host.endsWith('.' + h))) {
-        throw new OlxSdkError(`Image ${n}: host "${host}" is not in OLX_IMAGE_HOSTS`);
+        throw new ImageUploadError(`Image ${n}: host "${host}" is not in OLX_IMAGE_HOSTS`);
       }
       return; // explicitly trusted
     }
     if (url.protocol !== 'https:') {
-      throw new OlxSdkError(`Image ${n}: only https image URLs are accepted (or list the host in OLX_IMAGE_HOSTS)`);
+      throw new ImageUploadError(`Image ${n}: only https image URLs are accepted (or list the host in OLX_IMAGE_HOSTS)`);
     }
     let addresses: string[];
     try {
       addresses = isIP(host) ? [host] : await (this.o.resolveHost ?? defaultResolve)(host);
     } catch {
-      throw new OlxSdkError(`Image ${n}: could not resolve host "${host}"`);
+      throw new ImageUploadError(`Image ${n}: could not resolve host "${host}"`);
     }
     if (addresses.length === 0 || addresses.some(isPrivateAddress)) {
-      throw new OlxSdkError(
+      throw new ImageUploadError(
         `Image ${n}: host "${host}" resolves to a private or internal address (list it in OLX_IMAGE_HOSTS to allow it)`,
       );
     }
@@ -255,7 +255,7 @@ async function readCapped(res: Response, max: number, n: number): Promise<Uint8A
     total += value.byteLength;
     if (total > max) {
       await reader.cancel();
-      throw new OlxSdkError(`Image ${n} is larger than ${max} bytes`);
+      throw new ImageUploadError(`Image ${n} is larger than ${max} bytes`);
     }
     chunks.push(value);
   }

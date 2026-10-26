@@ -14,6 +14,8 @@ OLX_CONTACT_METHOD=
 
 # Where the saved login is kept (written by \`olx-lb login\`). Treat it as a password.
 OLX_SESSION_FILE=.olx-session/session.json
+# Or, on a server without a browser: the token from \`olx-lb token\`, used instead of the file.
+# OLX_ACCESS_TOKEN=
 
 # Optional: your own names for categories and locations (see \`olx-lb catalog\`).
 OLX_CATALOG_FILE=config/catalog.json

@@ -14,7 +14,7 @@ import { ListingsApi } from './listings/ListingsApi.js';
 import { FileRequestLog, createLogger, silentLogger, type Logger, type RequestLog } from './logger.js';
 import { CatalogMapper, loadCatalog, type Catalog } from './mapping/CatalogMapper.js';
 import { DEFAULT_CAPTURED_HEADERS, SessionManager } from './session/SessionManager.js';
-import { FileSessionStore, type SessionStore } from './session/storage.js';
+import { FileSessionStore, MemorySessionStore, sessionFromAccessToken, type SessionStore } from './session/storage.js';
 import { SyncService } from './sync/SyncService.js';
 import { JsonFileSyncStore, type SyncStore } from './sync/SyncStore.js';
 
@@ -143,7 +143,11 @@ export class OlxClient {
       contact: config.contact,
       endpoints,
       catalog: overrides.catalog ?? loadCatalog(config.catalogFile),
-      sessionStore: overrides.sessionStore ?? new FileSessionStore(config.sessionFile),
+      sessionStore:
+        overrides.sessionStore ??
+        (config.accessToken
+          ? new MemorySessionStore(sessionFromAccessToken(config.accessToken))
+          : new FileSessionStore(config.sessionFile)),
       syncStore: overrides.syncStore ?? new JsonFileSyncStore(config.syncStoreFile),
       requestLog: overrides.requestLog ?? new FileRequestLog(config.requestLogFile),
       ...overrides,

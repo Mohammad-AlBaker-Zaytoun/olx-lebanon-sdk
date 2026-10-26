@@ -35,6 +35,10 @@ Needs Playwright: npm install playwright && npx playwright install chromium`,
     ctx.out(`  cookies: ${saved.cookies.length}`);
     ctx.out(`  access token: ${token ? 'found' : 'NOT found (sign in, then press Enter again with \`olx-lb login\`)'}`);
     if (!token) throw new CliError('No access token was captured; the session may not be signed in.');
+    if (config.accessToken) {
+      ctx.err('\nNote: OLX_ACCESS_TOKEN is set, and it is used instead of this session. Update it with');
+      ctx.err('`olx-lb token`, or remove it to use the saved session.');
+    }
     ctx.out('\nKeep this file private: it gives full access to your OLX account.');
     ctx.out('For a Node.js or Next.js app: `olx-lb token` prints the token for an environment variable.');
   },
