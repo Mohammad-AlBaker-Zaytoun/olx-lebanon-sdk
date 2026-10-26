@@ -33,6 +33,7 @@
     "capture": "tsx scripts/capture-flow.ts",
     "capture:shapes": "tsx scripts/har-shapes.ts",
     "catalog": "tsx scripts/catalog.ts",
+    "live-test": "tsx scripts/live-test.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

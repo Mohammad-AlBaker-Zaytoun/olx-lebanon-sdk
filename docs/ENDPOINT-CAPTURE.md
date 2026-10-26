@@ -132,6 +132,17 @@ Open `.olx-session/session.json` (never share it) after `npm run login`:
 
 ## 7. Dry run
 
+The quickest check is `npm run live-test`. It posts, edits and deletes one test product (`captures/test-product.json`) with the same sync code the service uses, and prints the ad's state and photo count on OLX after each step:
+
+```bash
+npm run live-test -- check    # read-only
+npm run live-test -- create
+npm run live-test -- edit
+npm run live-test -- delete
+```
+
+To test the REST service end to end instead:
+
 1. `npm run build`, then `npm start`.
 2. `GET /status`: confirm `loggedIn: true` and the endpoints you mapped show as configured.
 3. `PUT /products/TEST-1/listing` with one real product, then poll `GET /jobs/:id`.
