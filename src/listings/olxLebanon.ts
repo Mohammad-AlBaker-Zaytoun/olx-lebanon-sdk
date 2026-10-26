@@ -99,6 +99,11 @@ export function createOlxLebanonAdapter(opts: OlxLebanonAdapterOptions = {}): Ol
     // Verified live: an edit with `images: []` and `order_photos: []` keeps the ad's photos.
     keepsPhotosWhenNoneSent: true,
 
+    readPhotoIds(rawAd) {
+      const photos = rec(rawAd).photos;
+      return Array.isArray(photos) ? photos.map((p) => str(rec(p).id)).filter((id): id is string => !!id) : [];
+    },
+
     // Sent only where the session is sent: the OLX domain and endpoints flagged
     // `sendSessionToForeignHost` (the Dubizzle ad API).
     requestHeaders(session) {
@@ -132,19 +137,29 @@ export function createOlxLebanonAdapter(opts: OlxLebanonAdapterOptions = {}): Ol
       }));
 
       if (ctx.mode === 'update') {
-        // New uploads go in `images`. Photos already on the ad stay: `order_photos`
-        // ("img_<photo id>") only reorders them; leaving one out does not remove it.
-        return {
+        // As the web app's edit form sends it: new uploads in `images` ({image_name,
+        // order_index, url}), the final photo order in `order_photos` ("img_<id>" for photos
+        // already on the ad, "tmp_<image name>" for new ones), and the ids of removed photos
+        // in `deleted_photos`. Leaving a photo out of order_photos does NOT remove it.
+        const replace = ctx.photos?.mode === 'replace' ? ctx.photos : undefined;
+        const body: Rec = {
           extra_fields: extra,
           contact_person,
           title: l.title,
           description: l.description,
-          images: photos,
-          order_photos: [],
+          images: images.map((img, i) => ({
+            image_name: img.id,
+            order_index: i,
+            url: img.url ?? `${OLX_LB_IMAGE_BASE}${img.id}.jpg`,
+          })),
+          order_photos: images.map((img) => `tmp_${img.id}`),
           category_id: l.categoryId,
           videos: [],
           location_id: l.locationId,
         };
+        const deleted = (replace?.existingPhotoIds ?? []).map(Number).filter((n) => Number.isSafeInteger(n));
+        if (deleted.length > 0) body.deleted_photos = deleted;
+        return body;
       }
 
       if (!ctx.account?.externalId) {

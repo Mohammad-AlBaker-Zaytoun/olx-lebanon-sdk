@@ -14,6 +14,11 @@ export interface PayloadContext {
   contact: ContactSettings;
   /** The uploaded photos in full (url, size), in the same order as `imageIds`. */
   images: UploadedImage[];
+  /**
+   * Edits only: what to do with the photos already on the ad. `keep` leaves them as they
+   * are (no new photos are sent); `replace` removes `existingPhotoIds` and adds `images`.
+   */
+  photos?: { mode: 'keep' } | { mode: 'replace'; existingPhotoIds: string[] };
 }
 
 /**
@@ -64,6 +69,11 @@ export interface OlxAdapter {
    * list would remove them.
    */
   keepsPhotosWhenNoneSent?: boolean;
+  /**
+   * Reads the ids of the photos on an ad from a listMyAds item. With it, an edit that
+   * changes photos removes the old ones instead of adding to them.
+   */
+  readPhotoIds?(rawAd: unknown): string[];
   /** Endpoints this adapter needs; the service warns at start-up about any that are missing. */
   requiredEndpoints?: EndpointName[];
   /**

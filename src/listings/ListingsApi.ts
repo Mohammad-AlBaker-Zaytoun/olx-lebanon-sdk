@@ -54,6 +54,8 @@ export interface ListingsApiDeps {
 const LOOKUP_PAGES = 3;
 const LOOKUP_PAGE_SIZE = 20; // the web app's own page size
 const LOOKUP_TIMEOUT_MS = 10_000;
+/** Pages of "My ads" searched for an ad's current photos before an edit that replaces them. */
+const PHOTO_LOOKUP_PAGES = 50;
 
 /** Create, edit, delete and read ads on your own OLX account. */
 export class ListingsApi implements ListingsPort {
@@ -126,8 +128,21 @@ export class ListingsApi implements ListingsPort {
   async update(adId: string, input: ListingInput, opts: UpdateOptions = {}): Promise<OlxAd> {
     const mapped = this.d.mapper.resolve(input);
     const ctx = await this.context('update');
-    const refund = await this.d.http.acquireWriteSlot();
     const keepPhotos = opts.photosUnchanged === true && this.d.adapter.keepsPhotosWhenNoneSent === true;
+    if (keepPhotos) {
+      ctx.photos = { mode: 'keep' };
+    } else if (this.d.adapter.readPhotoIds) {
+      // Read the ad's current photos BEFORE taking a write slot or uploading anything: if
+      // they can't be found, nothing is sent (an edit would otherwise pile photos up).
+      const current = await this.findMine(adId, PHOTO_LOOKUP_PAGES);
+      if (!current) {
+        throw new OlxSdkError(
+          `Ad ${adId} was not found in "My ads", so its current photos are unknown; the edit was not sent`,
+        );
+      }
+      ctx.photos = { mode: 'replace', existingPhotoIds: this.d.adapter.readPhotoIds(current.raw) };
+    }
+    const refund = await this.d.http.acquireWriteSlot();
     const images = keepPhotos ? [] : await this.uploadImages(input, refund, ctx);
     const raw = await this.d.http.call('updateAd', {
       params: { id: adId },
@@ -162,8 +177,8 @@ export class ListingsApi implements ListingsPort {
   }
 
   /** Looks an ad up in the newest pages of "My ads". Returns undefined if it isn't there. */
-  async findMine(adId: string): Promise<OlxAd | undefined> {
-    for (let page = 1; page <= LOOKUP_PAGES; page++) {
+  async findMine(adId: string, maxPages = LOOKUP_PAGES): Promise<OlxAd | undefined> {
+    for (let page = 1; page <= maxPages; page++) {
       const raw = await this.d.http.call('listMyAds', {
         query: { page, per_page: LOOKUP_PAGE_SIZE },
         retries: 0,

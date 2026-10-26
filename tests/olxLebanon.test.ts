@@ -81,11 +81,32 @@ describe('olxLebanonAdapter: request bodies', () => {
     expect(body.extra_fields).toEqual({ price_type: 'arranged', secondary_price: 9_000_000 });
   });
 
-  it('builds the edit-ad body (no account id, state or source)', () => {
-    const body = olxLebanonAdapter.buildAdPayload(listing, ['a-b'], { ...ctx, mode: 'update', account: undefined });
-    expect(body).toMatchObject({ order_photos: [], images: [expect.objectContaining({ image_name: 'a-b' })], category_id: '219' });
+  it('builds the edit-ad body like the web app: new photos, their order, removed photo ids', () => {
+    const body = olxLebanonAdapter.buildAdPayload(listing, ['a-b'], {
+      ...ctx,
+      mode: 'update',
+      account: undefined,
+      photos: { mode: 'replace', existingPhotoIds: ['18030972', '18031460'] },
+    });
+    expect(body).toMatchObject({
+      images: [{ image_name: 'a-b', order_index: 0, url: OLX_LB_IMAGE_BASE + 'a-b' }],
+      order_photos: ['tmp_a-b'],
+      deleted_photos: [18030972, 18031460],
+      category_id: '219',
+    });
     expect(body).not.toHaveProperty('user_external_id');
     expect(body).not.toHaveProperty('state');
+  });
+
+  it('an edit that keeps the photos sends none and removes none', () => {
+    const body = olxLebanonAdapter.buildAdPayload(listing, [], { ...ctx, images: [], mode: 'update', photos: { mode: 'keep' } });
+    expect(body).toMatchObject({ images: [], order_photos: [] });
+    expect(body).not.toHaveProperty('deleted_photos');
+  });
+
+  it('reads photo ids from a my-ads item', () => {
+    expect(olxLebanonAdapter.readPhotoIds!({ photos: [{ id: 18030972, externalID: 'x' }, { id: 18031460 }] })).toEqual(['18030972', '18031460']);
+    expect(olxLebanonAdapter.readPhotoIds!({})).toEqual([]);
   });
 
   it('refuses to create without the account id', () => {
@@ -333,7 +354,11 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
         if (opts.myAds === 'not-listed') {
           return jsonResponse({ count: 99, next: 'https://api-prod.olx-dubizzle.com/api/v1/user/my-ads?page=next', results: [{ id: 1, externalID: '117999999', state: 'active' }] });
         }
-        return jsonResponse({ count: 1, next: null, results: [{ id: 5_000_001, externalID: AD, state: opts.state ?? 'limited', title: 'Budgie pair' }] });
+        return jsonResponse({
+          count: 1,
+          next: null,
+          results: [{ id: 5_000_001, externalID: AD, state: opts.state ?? 'limited', title: 'Budgie pair', photos: [{ id: 18_000_001, externalID: 'old', orderIndex: 0 }] }],
+        });
       }
       if (u.pathname === `/api/v1/edit-ad/${AD}`) {
         return jsonResponse({ status: 'OK', data: { state: 'active', ad: { externalID: AD, state: 'active' } } });
@@ -508,6 +533,34 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     await client.sync.remove('P-1');
     expect(calls.at(-1)).toMatchObject({ method: 'POST', url: `https://api-prod.olx-dubizzle.com/api/v1/ads/${AD}/delete` });
     expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/api/v1/user'))).toHaveLength(1); // account read once
+  });
+
+  it('an edit with new photos removes the old ones (deleted_photos) instead of piling them up', async () => {
+    const { client, calls } = setup();
+    await client.sync.upsert('P-1', product);
+    await client.sync.upsert('P-1', { ...product, price: 98, images: [{ url: 'https://cdn.zaytoon.test/other.png' }] });
+    const patch = JSON.parse(String(calls.filter((c) => c.method === 'PATCH').at(-1)!.body)) as Record<string, unknown>;
+    const name = new URL(calls.filter((c) => c.url.includes('get-signed-url')).at(-1)!.url).searchParams.get('imageName')!;
+    expect(patch).toMatchObject({
+      images: [{ image_name: name, order_index: 0, url: `${OLX_LB_IMAGE_BASE}${name}.jpg` }],
+      order_photos: [`tmp_${name}`],
+      deleted_photos: [18_000_001],
+    });
+    // The ad's photos were read before the write slot was taken and before uploading.
+    const order = pathsOf(calls).slice(-4);
+    expect(order[0]).toBe('GET /api/v1/user/my-ads');
+  });
+
+  it("does not send an edit (or upload) when the ad's current photos can't be found", async () => {
+    const { client, calls } = setup();
+    await client.sync.upsert('P-1', product);
+    const before = calls.length;
+    await client.syncStore.set({ ...(await client.syncStore.get('P-1'))!, imagesHash: undefined }); // photos unknown
+    // my-ads no longer lists the ad:
+    (client.listings as unknown as { findMine: () => Promise<undefined> }).findMine = async () => undefined;
+    await expect(client.sync.upsert('P-1', { ...product, price: 97 })).rejects.toThrow(/not found in "My ads"/);
+    expect(calls.slice(before).filter((c) => c.method !== 'GET')).toEqual([]);
+    expect(client.limiter.recentCount).toBe(1); // only the create
   });
 
   it('an edit with the same photos uploads nothing (OLX keeps them); changed photos are uploaded', async () => {
