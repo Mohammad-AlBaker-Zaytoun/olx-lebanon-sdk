@@ -1,3 +1,4 @@
+import { isSecureOrLocal } from '../config.js';
 import { buildUrl, requireEndpoint, type EndpointMap, type EndpointName } from '../endpoints.js';
 import { AuthError, OlxHttpError, OlxSdkError, UncertainWriteError } from '../errors.js';
 import { silentLogger, type Logger, type RequestLog, type RequestLogEntry } from '../logger.js';
@@ -86,7 +87,7 @@ export class OlxHttpClient {
     const spec = requireEndpoint(this.o.endpoints, name);
     const url = buildUrl(this.o.baseUrl, spec, opts.params, opts.query);
     const target = new URL(url);
-    if (target.protocol !== 'https:') {
+    if (!isSecureOrLocal(target)) {
       throw new OlxSdkError(`Refusing to call "${name}" over ${target.protocol} — OLX endpoints must use https`);
     }
     const isRead = spec.method === 'GET';

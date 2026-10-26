@@ -11,11 +11,18 @@ const list = (v?: string): string[] =>
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
+/** https anywhere; plain http only for a local test server. */
+export const isSecureOrLocal = (url: URL): boolean =>
+  url.protocol === 'https:' || (url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname));
+
 const EnvSchema = z.object({
   OLX_BASE_URL: z
     .string()
     .url()
-    .refine((u) => new URL(u).protocol === 'https:', 'OLX_BASE_URL must use https')
+    .refine(
+      (u) => isSecureOrLocal(new URL(u)),
+      'OLX_BASE_URL must use https (plain http is only allowed for localhost, for testing)',
+    )
     .default('https://www.olx.com.lb'),
   OLX_SESSION_FILE: z.string().default('.olx-session/session.json'),
   OLX_ENDPOINTS_FILE: z.string().default('config/endpoints.json'),
@@ -34,10 +41,7 @@ const EnvSchema = z.object({
   WEBHOOK_URL: z
     .string()
     .url()
-    .refine((u) => {
-      const url = new URL(u);
-      return url.protocol === 'https:' || (url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname));
-    }, 'WEBHOOK_URL must use https (plain http is only allowed for localhost)')
+    .refine((u) => isSecureOrLocal(new URL(u)), 'WEBHOOK_URL must use https (plain http is only allowed for localhost)')
     .optional(),
   WEBHOOK_SECRET: z.string().min(16, 'WEBHOOK_SECRET must be at least 16 characters').optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

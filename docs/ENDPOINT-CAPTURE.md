@@ -109,7 +109,7 @@ Open `.olx-session/session.json` (never share it) after `npm run login`:
   ```ts
   const olxAdapter: OlxAdapter = {
     ...placeholderAdapter,
-    requestHeaders(session) {
+    requestHeaders(session): Record<string, string> {
       const token = session.localStorage?.['https://www.olx.com.lb']?.['<captured key>'];
       return token ? { authorization: `Bearer ${token}` } : {};
     },

@@ -470,8 +470,9 @@ describe('webhook', () => {
 });
 
 describe('config validation', () => {
-  it('rejects an http base URL', () => {
+  it('rejects an http base URL, except a localhost test server', () => {
     expect(() => loadConfig({ OLX_BASE_URL: 'http://www.olx.com.lb' })).toThrow(/https/);
+    expect(loadConfig({ OLX_BASE_URL: 'http://localhost:8080' }).baseUrl).toBe('http://localhost:8080');
   });
 
   it('requires a separate webhook secret and https for remote webhooks', () => {
