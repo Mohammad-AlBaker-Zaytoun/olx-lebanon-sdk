@@ -13,7 +13,7 @@ import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { chromium } from 'playwright';
 import { loadConfig } from '../src/config.js';
-import { formatHarSummary, summarizeHar, type HarLike } from '../src/tools/har.js';
+import { formatHarSummary, formatHostActivity, summarizeHar, tallyHosts, type HarLike } from '../src/tools/har.js';
 
 const config = loadConfig();
 const domains = [new URL(config.baseUrl).hostname.toLowerCase().replace(/^www\./, ''), ...config.extraHosts];
@@ -32,6 +32,9 @@ const context = await browser.newContext({
   locale: 'en-US',
   recordHar: { path: harPath, content: 'embed', urlFilter: hostPattern },
 });
+// Hostname + method of every request, so a call sent to an unrecorded host is still visible.
+const seen: Array<{ method: string; url: string }> = [];
+context.on('request', (req) => seen.push({ method: req.method(), url: req.url() }));
 const page = await context.newPage();
 await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded' });
 
@@ -50,10 +53,15 @@ await browser.close();
 await chmod(harPath, 0o600).catch(() => {});
 
 const har = JSON.parse(await readFile(harPath, 'utf8')) as HarLike;
-const summary = formatHarSummary(summarizeHar(har, (host) => isRecordedHost(host.toLowerCase())));
+const others = formatHostActivity(tallyHosts(seen, isRecordedHost));
+const summary =
+  formatHarSummary(summarizeHar(har, (host) => isRecordedHost(host.toLowerCase()))) +
+  '\n\nOther hosts the page contacted (NOT recorded; hostnames and counts only):\n' +
+  'Hosts with POST/PUT/PATCH/DELETE are the likely API or upload hosts: add them to OLX_EXTRA_HOSTS.\n\n' +
+  others;
 const summaryPath = harPath.replace(/\.har$/, '.summary.txt');
 await writeFile(summaryPath, summary + '\n', { mode: 0o600 });
 
-console.log(`\nSaved ${harPath}\nCandidate API calls (writes first):\n`);
+console.log(`\nSaved ${harPath}\nCandidate API calls (writes first), then other hosts:\n`);
 console.log(summary);
 console.log(`\nSummary written to ${summaryPath}. Next: docs/ENDPOINT-CAPTURE.md, step 2.`);

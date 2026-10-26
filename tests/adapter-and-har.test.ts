@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeStatus, placeholderAdapter } from '../src/listings/adapter.js';
 import { cookieHeaderFor } from '../src/session/storage.js';
-import { summarizeHar } from '../src/tools/har.js';
+import { formatHostActivity, isSensitiveSegment, summarizeHar, tallyHosts } from '../src/tools/har.js';
 import { session } from './helpers.js';
 
 describe('placeholderAdapter', () => {
@@ -76,5 +76,57 @@ describe('summarizeHar', () => {
       'POST https://www.olx.com.lb/api/ads x1',
       'GET https://www.olx.com.lb/api/ads/{id} x2',
     ]);
+  });
+});
+
+describe('HAR summary: ids with file extensions', () => {
+  it('collapses ids that carry an extension, like Next.js data routes', () => {
+    for (const seg of ['117145974.json', '117145974.html', 'aZ9kQ2mN8pL4xR7tV1.json']) expect(isSensitiveSegment(seg)).toBe(true);
+    for (const seg of ['post.json', 'myAds.json', 'listing.json', 'success.json']) expect(isSensitiveSegment(seg)).toBe(false);
+    const [call] = summarizeHar({
+      log: {
+        entries: [
+          {
+            request: { method: 'GET', url: 'https://www.olx.com.lb/_next/data/abc/en/edit/117145974.json' },
+            response: { status: 200, content: { mimeType: 'application/json' } },
+          },
+        ],
+      },
+    });
+    expect(call!.pattern).toBe('https://www.olx.com.lb/_next/data/abc/en/edit/{id}');
+  });
+});
+
+describe('tallyHosts', () => {
+  const recorded = (h: string) => h === 'olx.com.lb' || h.endsWith('.olx.com.lb');
+
+  it('lists only unrecorded hosts, hostnames and method counts, writes first', () => {
+    const hosts = tallyHosts(
+      [
+        { method: 'GET', url: 'https://www.olx.com.lb/api/x' },
+        { method: 'GET', url: 'https://cdn.example/a.js?token=secret' },
+        { method: 'GET', url: 'https://cdn.example/b.js' },
+        { method: 'OPTIONS', url: 'https://api.example/ads' },
+        { method: 'POST', url: 'https://api.example/ads' },
+        { method: 'PUT', url: 'https://storage.example/upload/abc?sig=secret' },
+        { method: 'GET', url: 'data:image/png;base64,AAAA' },
+        { method: 'GET', url: 'not a url' },
+      ],
+      recorded,
+    );
+    expect(hosts).toEqual([
+      { host: 'api.example', methods: { OPTIONS: 1, POST: 1 } },
+      { host: 'storage.example', methods: { PUT: 1 } },
+      { host: 'cdn.example', methods: { GET: 2 } },
+    ]);
+    const text = formatHostActivity(hosts);
+    expect(text).not.toMatch(/secret|upload|ads|\.js/);
+    expect(text).toContain('POST x1');
+  });
+
+  it('says so when nothing else was contacted', () => {
+    expect(formatHostActivity(tallyHosts([{ method: 'GET', url: 'https://www.olx.com.lb/' }], recorded))).toBe(
+      'No other hosts were contacted.',
+    );
   });
 });
