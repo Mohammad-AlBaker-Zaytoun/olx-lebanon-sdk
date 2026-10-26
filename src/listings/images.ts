@@ -1,4 +1,6 @@
+import { lookup } from 'node:dns/promises';
 import { readFile } from 'node:fs/promises';
+import { BlockList, isIP } from 'node:net';
 import { basename, extname } from 'node:path';
 import { OlxSdkError } from '../errors.js';
 import type { OlxHttpClient } from '../http/HttpClient.js';
@@ -13,13 +15,60 @@ const MIME: Record<string, string> = {
   '.gif': 'image/gif',
 };
 
+/** Loopback, private, link-local (cloud metadata), CGNAT, multicast and reserved ranges. */
+const BLOCKED = new BlockList();
+for (const [net, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.0.0.0', 24],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['224.0.0.0', 4],
+  ['240.0.0.0', 4],
+] as const) {
+  BLOCKED.addSubnet(net, prefix, 'ipv4');
+}
+for (const [net, prefix] of [
+  ['::', 128],
+  ['::1', 128],
+  ['fc00::', 7],
+  ['fe80::', 10],
+  ['ff00::', 8],
+] as const) {
+  BLOCKED.addSubnet(net, prefix, 'ipv6');
+}
+
+export function isPrivateAddress(address: string): boolean {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+  if (mapped) return BLOCKED.check(mapped[1]!, 'ipv4');
+  const family = isIP(address);
+  if (family === 4) return BLOCKED.check(address, 'ipv4');
+  if (family === 6) return BLOCKED.check(address, 'ipv6');
+  return true; // not an IP at all: refuse rather than guess
+}
+
+const defaultResolve = async (host: string): Promise<string[]> =>
+  (await lookup(host, { all: true, verbatim: true })).map((a) => a.address);
+
 export interface ImageUploaderOptions {
   http: OlxHttpClient;
   adapter: OlxAdapter;
-  /** If set, URL images are only fetched from these hostnames (or their subdomains). */
+  /**
+   * If set, URL images may only come from these hostnames (or their subdomains), and those
+   * hosts are trusted as-is (http and private addresses allowed — e.g. a store on your LAN).
+   * If unset, any host is allowed but only over https and only if it resolves to a public address.
+   */
   allowedHosts?: string[];
   maxBytes?: number;
+  timeoutMs?: number;
+  maxRedirects?: number;
   fetchImpl?: typeof fetch;
+  /** DNS resolution, injectable for tests. */
+  resolveHost?: (host: string) => Promise<string[]>;
 }
 
 interface LoadedImage {
@@ -28,28 +77,34 @@ interface LoadedImage {
   contentType: string;
 }
 
+/** Origin + path only: signed-URL tokens in the query must not end up in logs or job errors. */
+const safeUrl = (u: URL): string => u.origin + u.pathname;
+
 export class ImageUploader {
   constructor(private readonly o: ImageUploaderOptions) {}
 
   /** Uploads images one at a time, in order, and returns OLX's image ids. */
   async uploadAll(images: ImageSource[]): Promise<string[]> {
     const ids: string[] = [];
-    for (const img of images) ids.push(await this.upload(img));
+    for (const [i, img] of images.entries()) ids.push(await this.upload(img, i + 1));
     return ids;
   }
 
-  async upload(img: ImageSource): Promise<string> {
-    const { data, filename, contentType } = await this.load(img);
+  async upload(img: ImageSource, position = 1): Promise<string> {
+    const { data, filename, contentType } = await this.load(img, position);
     const form = new FormData();
     form.append(this.o.adapter.imageFieldName ?? 'file', new Blob([data as BlobPart], { type: contentType }), filename);
+    // Part of a single ad write: the caller already holds the write slot.
     const raw = await this.o.http.call('uploadImage', { form, rateLimit: false });
     return this.o.adapter.parseImageUpload(raw);
   }
 
-  private async load(img: ImageSource): Promise<LoadedImage> {
-    const maxBytes = this.o.maxBytes ?? 10 * 1024 * 1024;
-    let loaded: LoadedImage;
+  private get maxBytes(): number {
+    return this.o.maxBytes ?? 10 * 1024 * 1024;
+  }
 
+  private async load(img: ImageSource, n: number): Promise<LoadedImage> {
+    let loaded: LoadedImage;
     if ('data' in img) {
       loaded = {
         data: img.data,
@@ -63,30 +118,107 @@ export class ImageUploader {
         contentType: MIME[extname(img.path).toLowerCase()] ?? 'application/octet-stream',
       };
     } else {
-      const url = new URL(img.url);
-      if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-        throw new OlxSdkError(`Unsupported image URL scheme: ${url.protocol}`);
-      }
-      const allowed = this.o.allowedHosts;
-      if (allowed && !allowed.some((h) => url.hostname === h || url.hostname.endsWith('.' + h))) {
-        throw new OlxSdkError(`Image host "${url.hostname}" is not in OLX_IMAGE_HOSTS`);
-      }
-      const res = await (this.o.fetchImpl ?? fetch)(url);
-      if (!res.ok) throw new OlxSdkError(`Could not download image ${url} (HTTP ${res.status})`);
-      const name = basename(url.pathname) || 'image.jpg';
-      loaded = {
-        data: new Uint8Array(await res.arrayBuffer()),
-        filename: name,
-        contentType: res.headers.get('content-type')?.split(';')[0] ?? MIME[extname(name).toLowerCase()] ?? 'image/jpeg',
-      };
+      loaded = await this.download(img.url, n);
     }
 
-    if (loaded.data.byteLength > maxBytes) {
-      throw new OlxSdkError(`Image ${loaded.filename} is ${loaded.data.byteLength} bytes; the limit is ${maxBytes}`);
+    if (loaded.data.byteLength > this.maxBytes) {
+      throw new OlxSdkError(`Image ${n} is larger than ${this.maxBytes} bytes`);
     }
     if (!loaded.contentType.startsWith('image/')) {
-      throw new OlxSdkError(`${loaded.filename} does not look like an image (${loaded.contentType})`);
+      throw new OlxSdkError(`Image ${n} is not an image (${loaded.contentType})`);
     }
     return loaded;
   }
+
+  private async download(raw: string, n: number): Promise<LoadedImage> {
+    const fetchImpl = this.o.fetchImpl ?? fetch;
+    const maxRedirects = this.o.maxRedirects ?? 3;
+    let url = new URL(raw);
+
+    for (let hop = 0; ; hop++) {
+      await this.assertAllowed(url, n);
+      const res = await fetchImpl(url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(this.o.timeoutMs ?? 20_000),
+      });
+
+      if (res.status >= 300 && res.status < 400) {
+        await res.body?.cancel();
+        const location = res.headers.get('location');
+        if (!location || hop >= maxRedirects) throw new OlxSdkError(`Image ${n}: too many or invalid redirects`);
+        url = new URL(location, url); // every hop is re-checked at the top of the loop
+        continue;
+      }
+      if (!res.ok) {
+        await res.body?.cancel();
+        throw new OlxSdkError(`Image ${n} (${safeUrl(url)}): download failed with HTTP ${res.status}`);
+      }
+
+      const declared = Number(res.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > this.maxBytes) {
+        await res.body?.cancel();
+        throw new OlxSdkError(`Image ${n} is larger than ${this.maxBytes} bytes`);
+      }
+      const data = await readCapped(res, this.maxBytes, n);
+      const name = basename(url.pathname) || 'image.jpg';
+      return {
+        data,
+        filename: name,
+        contentType:
+          res.headers.get('content-type')?.split(';')[0]?.trim() || MIME[extname(name).toLowerCase()] || 'image/jpeg',
+      };
+    }
+  }
+
+  private async assertAllowed(url: URL, n: number): Promise<void> {
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      throw new OlxSdkError(`Image ${n}: unsupported URL scheme ${url.protocol}`);
+    }
+    const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const allowed = this.o.allowedHosts;
+    if (allowed) {
+      if (!allowed.some((h) => host === h || host.endsWith('.' + h))) {
+        throw new OlxSdkError(`Image ${n}: host "${host}" is not in OLX_IMAGE_HOSTS`);
+      }
+      return; // explicitly trusted
+    }
+    if (url.protocol !== 'https:') {
+      throw new OlxSdkError(`Image ${n}: only https image URLs are accepted (or list the host in OLX_IMAGE_HOSTS)`);
+    }
+    let addresses: string[];
+    try {
+      addresses = isIP(host) ? [host] : await (this.o.resolveHost ?? defaultResolve)(host);
+    } catch {
+      throw new OlxSdkError(`Image ${n}: could not resolve host "${host}"`);
+    }
+    if (addresses.length === 0 || addresses.some(isPrivateAddress)) {
+      throw new OlxSdkError(
+        `Image ${n}: host "${host}" resolves to a private or internal address (list it in OLX_IMAGE_HOSTS to allow it)`,
+      );
+    }
+  }
+}
+
+async function readCapped(res: Response, max: number, n: number): Promise<Uint8Array> {
+  if (!res.body) return new Uint8Array(await res.arrayBuffer());
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      throw new OlxSdkError(`Image ${n} is larger than ${max} bytes`);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
 }

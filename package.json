@@ -26,6 +26,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "dev": "tsx watch src/server/index.ts",
     "start": "node dist/server/index.js",
     "login": "tsx scripts/login.ts",

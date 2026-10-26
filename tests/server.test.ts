@@ -23,8 +23,26 @@ function setup() {
     return { ok: true };
   });
   const store = new MemorySyncStore();
-  app = buildServer({ apiKey: API_KEY, queue, store, status: async () => ({ queue: queue.stats() }) });
-  return { queue, store, handled };
+  const resolved: string[] = [];
+  app = buildServer({
+    apiKey: API_KEY,
+    queue,
+    store,
+    resolve: {
+      link: async (productId, adId) => {
+        resolved.push(`link:${productId}:${adId}`);
+        return { productId, adId, status: 'unknown', contentHash: '', createdAt: 't', lastSyncedAt: 't' };
+      },
+      forget: async (productId) => {
+        resolved.push(`forget:${productId}`);
+        return true;
+      },
+    },
+    status: async () => {
+      throw new Error('secret internal detail');
+    },
+  });
+  return { queue, store, handled, resolved };
 }
 
 const auth = { 'x-api-key': API_KEY };
@@ -41,7 +59,53 @@ describe('REST server', () => {
     expect((await app.inject({ method: 'GET', url: '/status', headers: { 'x-api-key': 'wrong' } })).statusCode).toBe(
       401,
     );
-    expect((await app.inject({ method: 'GET', url: '/status', headers: auth })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/listings', headers: auth })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/health' })).statusCode).toBe(401);
+  });
+
+  it('hides internal error details', async () => {
+    setup();
+    const res = await app.inject({ method: 'GET', url: '/status', headers: auth });
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toContain('secret internal detail');
+  });
+
+  it('passes ?force=true through to the job', async () => {
+    const { queue } = setup();
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/products/P-9/listing?force=true',
+      headers: auth,
+      payload: body,
+    });
+    await queue.idle();
+    expect(queue.get(res.json<{ jobId: string }>().jobId)?.force).toBe(true);
+  });
+
+  it('resolves parked products by linking or forgetting', async () => {
+    const { resolved } = setup();
+    const link = await app.inject({
+      method: 'POST',
+      url: '/products/P-5/listing/resolve',
+      headers: auth,
+      payload: { action: 'link', adId: 'ad-77' },
+    });
+    expect(link.json()).toMatchObject({ adId: 'ad-77' });
+    const forget = await app.inject({
+      method: 'POST',
+      url: '/products/P-6/listing/resolve',
+      headers: auth,
+      payload: { action: 'forget' },
+    });
+    expect(forget.json()).toEqual({ forgotten: true });
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/products/P-6/listing/resolve',
+      headers: auth,
+      payload: { action: 'link' },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(resolved).toEqual(['link:P-5:ad-77', 'forget:P-6']);
   });
 
   it('accepts an upsert, applies schema defaults, and exposes the job', async () => {

@@ -3,9 +3,20 @@ import { OlxSdkError } from './errors.js';
 import type { LogLevel } from './logger.js';
 
 const int = (def: number) => z.coerce.number().int().nonnegative().default(def);
+const list = (v?: string): string[] =>
+  (v ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
 const EnvSchema = z.object({
-  OLX_BASE_URL: z.string().url().default('https://www.olx.com.lb'),
+  OLX_BASE_URL: z
+    .string()
+    .url()
+    .refine((u) => new URL(u).protocol === 'https:', 'OLX_BASE_URL must use https')
+    .default('https://www.olx.com.lb'),
   OLX_SESSION_FILE: z.string().default('.olx-session/session.json'),
   OLX_ENDPOINTS_FILE: z.string().default('config/endpoints.json'),
   OLX_CATALOG_FILE: z.string().default('config/catalog.json'),
@@ -15,10 +26,20 @@ const EnvSchema = z.object({
   OLX_WRITE_JITTER_MS: int(15_000),
   OLX_MAX_WRITES_PER_HOUR: z.coerce.number().int().positive().default(20),
   OLX_IMAGE_HOSTS: z.string().optional(),
+  OLX_EXTRA_HOSTS: z.string().optional(),
+  OLX_CAPTURE_HEADERS: z.string().optional(),
   SERVER_HOST: z.string().default('127.0.0.1'),
   SERVER_PORT: z.coerce.number().int().min(1).max(65535).default(8787),
   SERVER_API_KEY: z.string().min(16, 'SERVER_API_KEY must be at least 16 characters').optional(),
-  WEBHOOK_URL: z.string().url().optional(),
+  WEBHOOK_URL: z
+    .string()
+    .url()
+    .refine((u) => {
+      const url = new URL(u);
+      return url.protocol === 'https:' || (url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname));
+    }, 'WEBHOOK_URL must use https (plain http is only allowed for localhost)')
+    .optional(),
+  WEBHOOK_SECRET: z.string().min(16, 'WEBHOOK_SECRET must be at least 16 characters').optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 
@@ -39,10 +60,15 @@ export interface OlxConfig {
   syncStoreFile: string;
   requestLogFile: string;
   writeLimits: WriteLimits;
+  /** Image URLs may only come from these hosts (or subdomains). Unset: any public https host. */
   allowedImageHosts?: string[];
+  /** Non-OLX hosts the web app talks to (e.g. an image CDN), recorded by login/capture. */
+  extraHosts: string[];
+  /** Extra request header names to capture at login, on top of the defaults. */
+  captureHeaders: string[];
   logLevel: LogLevel;
   server: { host: string; port: number; apiKey?: string };
-  webhookUrl?: string;
+  webhook?: { url: string; secret: string };
 }
 
 /** Reads configuration from environment variables (load `.env` first with `dotenv/config`). */
@@ -50,14 +76,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OlxConfig {
   // Treat empty values (`FOO=` in .env) as unset.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''));
   const parsed = EnvSchema.safeParse(cleaned);
-  if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n  ');
-    throw new OlxSdkError(`Invalid configuration:\n  ${issues}`);
+  const issues = parsed.success ? [] : parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+
+  if (parsed.success) {
+    const e = parsed.data;
+    if (e.WEBHOOK_URL && !e.WEBHOOK_SECRET) {
+      issues.push('WEBHOOK_SECRET: required when WEBHOOK_URL is set (used to sign webhook payloads)');
+    }
+    if (e.WEBHOOK_SECRET && e.WEBHOOK_SECRET === e.SERVER_API_KEY) {
+      issues.push('WEBHOOK_SECRET: must be different from SERVER_API_KEY');
+    }
   }
+  if (!parsed.success || issues.length > 0) {
+    throw new OlxSdkError(`Invalid configuration:\n  ${issues.join('\n  ')}`);
+  }
+
   const e = parsed.data;
-  const hosts = e.OLX_IMAGE_HOSTS?.split(',')
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean);
+  const imageHosts = list(e.OLX_IMAGE_HOSTS);
 
   return {
     baseUrl: e.OLX_BASE_URL,
@@ -71,9 +106,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OlxConfig {
       jitterMs: e.OLX_WRITE_JITTER_MS,
       maxPerHour: e.OLX_MAX_WRITES_PER_HOUR,
     },
-    allowedImageHosts: hosts && hosts.length > 0 ? hosts : undefined,
+    allowedImageHosts: imageHosts.length > 0 ? imageHosts : undefined,
+    extraHosts: list(e.OLX_EXTRA_HOSTS),
+    captureHeaders: list(e.OLX_CAPTURE_HEADERS),
     logLevel: e.LOG_LEVEL,
     server: { host: e.SERVER_HOST, port: e.SERVER_PORT, apiKey: e.SERVER_API_KEY },
-    webhookUrl: e.WEBHOOK_URL,
+    webhook: e.WEBHOOK_URL && e.WEBHOOK_SECRET ? { url: e.WEBHOOK_URL, secret: e.WEBHOOK_SECRET } : undefined,
   };
 }

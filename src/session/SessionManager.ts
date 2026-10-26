@@ -4,6 +4,8 @@ import type { SessionData, SessionStore } from './storage.js';
 
 export interface SessionProvider {
   getSession(): Promise<SessionData>;
+  /** Called when OLX rejects the session, so the next call re-reads it from the store. */
+  invalidate?(): void;
 }
 
 export interface SessionStatus {
@@ -20,7 +22,10 @@ export interface SessionManagerOptions {
   baseUrl: string;
   store: SessionStore;
   logger?: Logger;
+  /** Header names to capture; defaults to DEFAULT_CAPTURED_HEADERS. */
   captureHeaders?: string[];
+  /** Non-OLX hosts the web app sends authenticated calls to (e.g. an image or API host). */
+  extraHosts?: string[];
 }
 
 /**
@@ -32,6 +37,7 @@ export interface SessionManagerOptions {
  */
 export class SessionManager implements SessionProvider {
   private cached: SessionData | null = null;
+  private cachedVersion: string | undefined;
   private readonly logger: Logger;
 
   constructor(private readonly opts: SessionManagerOptions) {
@@ -39,15 +45,39 @@ export class SessionManager implements SessionProvider {
   }
 
   async getSession(): Promise<SessionData> {
-    if (!this.cached) this.cached = await this.opts.store.load();
-    if (!this.cached) {
+    const s = await this.current();
+    if (!s) {
       throw new AuthError('No saved OLX session. Run `npm run login` and sign in to your OLX account.');
+    }
+    return s;
+  }
+
+  invalidate(): void {
+    this.cached = null;
+    this.cachedVersion = undefined;
+  }
+
+  /** Returns the cached session, reloading it if the store reports a change. */
+  private async current(): Promise<SessionData | null> {
+    const store = this.opts.store;
+    if (store.version) {
+      const v = await store.version();
+      if (this.cached && v !== this.cachedVersion) {
+        this.logger.info('Session store changed; reloading');
+        this.cached = null;
+      }
+      if (!this.cached) {
+        this.cached = await store.load();
+        this.cachedVersion = v;
+      }
+    } else if (!this.cached) {
+      this.cached = await store.load();
     }
     return this.cached;
   }
 
   async status(): Promise<SessionStatus> {
-    const s = this.cached ?? (await this.opts.store.load());
+    const s = await this.current();
     return {
       loggedIn: s !== null,
       savedAt: s?.savedAt,
@@ -57,7 +87,7 @@ export class SessionManager implements SessionProvider {
   }
 
   async clear(): Promise<void> {
-    this.cached = null;
+    this.invalidate();
     await this.opts.store.clear();
   }
 
@@ -70,18 +100,21 @@ export class SessionManager implements SessionProvider {
     const browser = await chromium.launch({ headless: false });
     try {
       const context = await browser.newContext({ locale: 'en-US' });
-      const olxHost = new URL(this.opts.baseUrl).hostname.replace(/^www\./, '');
-      const wanted = this.opts.captureHeaders ?? DEFAULT_CAPTURED_HEADERS;
+      const domains = [
+        new URL(this.opts.baseUrl).hostname.toLowerCase().replace(/^www\./, ''),
+        ...(this.opts.extraHosts ?? []),
+      ];
+      const wanted = (this.opts.captureHeaders ?? DEFAULT_CAPTURED_HEADERS).map((h) => h.toLowerCase());
       const captured: Record<string, string> = {};
 
       context.on('request', (req) => {
         let host: string;
         try {
-          host = new URL(req.url()).hostname;
+          host = new URL(req.url()).hostname.toLowerCase();
         } catch {
           return;
         }
-        if (host !== olxHost && !host.endsWith('.' + olxHost)) return;
+        if (!domains.some((d) => host === d || host.endsWith('.' + d))) return;
         const headers = req.headers();
         for (const name of wanted) {
           const value = headers[name];
@@ -111,6 +144,7 @@ export class SessionManager implements SessionProvider {
       };
       await this.opts.store.save(session);
       this.cached = session;
+      this.cachedVersion = await this.opts.store.version?.();
       this.logger.info('OLX session saved', {
         cookies: session.cookies.length,
         capturedHeaders: Object.keys(captured),

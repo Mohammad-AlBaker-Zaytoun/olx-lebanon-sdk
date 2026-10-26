@@ -4,53 +4,51 @@ import { OlxClient } from '../client.js';
 import { loadConfig } from '../config.js';
 import { createLogger } from '../logger.js';
 import { buildServer } from './app.js';
-import { JobQueue, type Job } from './queue.js';
+import { JobQueue } from './queue.js';
+import { createWebhookNotifier } from './webhook.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config.logLevel);
   const apiKey = config.server.apiKey;
   if (!apiKey) {
-    logger.error('SERVER_API_KEY is not set. Generate one and add it to .env (see .env.example).');
+    logger.error('SERVER_API_KEY is not set. Generate one and add it to .env (see .env.example).', {
+      cwd: process.cwd(),
+      hint: 'Run the service from the project folder so .env and config/ are found',
+    });
     process.exit(1);
   }
 
   const client = OlxClient.fromConfig(config, { logger });
-
-  const notify = async (job: Job): Promise<void> => {
-    if (!config.webhookUrl) return;
-    try {
-      await fetch(config.webhookUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify(job),
-        signal: AbortSignal.timeout(10_000),
-      });
-    } catch (err) {
-      logger.warn('Webhook delivery failed', { jobId: job.id, error: (err as Error).message });
-    }
-  };
+  const webhook = config.webhook ? createWebhookNotifier(config.webhook, logger) : undefined;
 
   const queue = new JobQueue(
     async (job, payload) => {
       if (job.type === 'upsert') {
         if (!payload) throw new Error('upsert job without payload');
-        return client.sync.upsert(job.productId, payload);
+        return client.sync.upsert(job.productId, payload, { force: job.force });
       }
       return client.sync.remove(job.productId);
     },
-    { logger, onSettled: (job) => void notify(job) },
+    { logger, onSettled: webhook ? (job) => webhook.send(job) : undefined },
   );
 
   const app = buildServer({
     apiKey,
     queue,
     store: client.syncStore,
+    resolve: {
+      link: (productId, adId) => client.sync.link(productId, adId),
+      forget: (productId) => client.sync.forget(productId),
+    },
     status: async () => ({
       session: await client.session.status(),
       endpoints: client.endpointStatus(),
       queue: queue.stats(),
       writesLastHour: client.limiter.recentCount,
+      needsAttention: (await client.syncStore.all())
+        .filter((r) => r.syncState)
+        .map((r) => ({ productId: r.productId, syncState: r.syncState, lastError: r.lastError })),
     }),
   });
 
@@ -67,10 +65,14 @@ async function main(): Promise<void> {
   await app.listen({ host: config.server.host, port: config.server.port });
   logger.info('olx-lebanon-sdk server listening', { host: config.server.host, port: config.server.port });
 
+  let stopping = false;
   const shutdown = async (signal: string) => {
-    logger.info('Shutting down', { signal });
+    if (stopping) return;
+    stopping = true;
+    logger.info('Shutting down; finishing the current job first', { signal });
     await app.close();
     await queue.idle();
+    await webhook?.flush();
     process.exit(0);
   };
   process.once('SIGINT', () => void shutdown('SIGINT'));

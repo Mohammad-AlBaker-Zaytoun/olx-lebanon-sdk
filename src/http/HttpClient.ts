@@ -1,8 +1,8 @@
 import { buildUrl, requireEndpoint, type EndpointMap, type EndpointName } from '../endpoints.js';
-import { AuthError, OlxHttpError, OlxSdkError } from '../errors.js';
-import { silentLogger, type Logger, type RequestLog } from '../logger.js';
+import { AuthError, OlxHttpError, OlxSdkError, UncertainWriteError } from '../errors.js';
+import { silentLogger, type Logger, type RequestLog, type RequestLogEntry } from '../logger.js';
 import type { SessionProvider } from '../session/SessionManager.js';
-import { cookieHeaderFor } from '../session/storage.js';
+import { cookieHeaderFor, type SessionData } from '../session/storage.js';
 import type { WriteRateLimiter } from './rateLimiter.js';
 
 export type Transport = (url: string, init: RequestInit) => Promise<Response>;
@@ -13,7 +13,10 @@ export interface CallOptions {
   json?: unknown;
   form?: FormData;
   headers?: Record<string, string>;
-  /** Defaults to true for non-GET calls. Image uploads opt out (they are part of one ad write). */
+  /**
+   * Defaults to true for non-GET calls. Pass false when the caller already holds a write
+   * slot (see `acquireWriteSlot`), e.g. the createAd that follows its image uploads.
+   */
   rateLimit?: boolean;
 }
 
@@ -28,40 +31,75 @@ export interface HttpClientOptions {
   /** Extra attempts for GET calls on network errors, 429 and 5xx. Writes are never retried automatically. */
   maxReadRetries?: number;
   retryBaseMs?: number;
+  /** Upper bound for a server-requested Retry-After wait. */
+  maxRetryDelayMs?: number;
+  /** Per-request timeout. */
+  timeoutMs?: number;
+  /** Extra headers derived from the session (adapter hook), sent only where the session is sent. */
+  extraHeaders?: (session: SessionData) => Record<string, string>;
   sleep?: (ms: number) => Promise<void>;
 }
 
+const MAX_RETRY_DELAY_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+/** `www.olx.com.lb` → `olx.com.lb`; the session is only valid for that domain and its subdomains. */
+export function sessionDomain(baseUrl: string): string {
+  return new URL(baseUrl).hostname.toLowerCase().replace(/^www\./, '');
+}
+
+export function isWithinDomain(host: string, domain: string): boolean {
+  const h = host.toLowerCase();
+  return h === domain || h.endsWith('.' + domain);
+}
+
 /**
- * Replays OLX web-app calls with your saved session. Writes are never auto-retried:
- * a timed-out "create ad" may still have succeeded, and retrying would duplicate it.
+ * Replays OLX web-app calls with your saved session.
+ *
+ * - The session (cookies and auth headers) is only attached to the OLX domain.
+ * - Redirects are never followed: on OLX a redirect almost always means "go log in",
+ *   and following it could forward credentials to another host.
+ * - Writes are never auto-retried. When a write's outcome is unknown (timeout, network
+ *   error, 5xx) an `UncertainWriteError` is thrown so the caller can avoid a duplicate ad.
  */
 export class OlxHttpClient {
   private readonly logger: Logger;
   private readonly transport: Transport;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly domain: string;
 
   constructor(private readonly o: HttpClientOptions) {
     this.logger = o.logger ?? silentLogger;
     this.transport = o.transport ?? ((url, init) => fetch(url, init));
     this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.domain = sessionDomain(o.baseUrl);
+  }
+
+  /** Waits for one write slot from the rate limiter. */
+  acquireWriteSlot(): Promise<void> {
+    return this.o.limiter.acquire();
   }
 
   async call<T = unknown>(name: EndpointName, opts: CallOptions = {}): Promise<T> {
     const spec = requireEndpoint(this.o.endpoints, name);
     const url = buildUrl(this.o.baseUrl, spec, opts.params, opts.query);
+    const target = new URL(url);
+    if (target.protocol !== 'https:') {
+      throw new OlxSdkError(`Refusing to call "${name}" over ${target.protocol} — OLX endpoints must use https`);
+    }
     const isRead = spec.method === 'GET';
 
     if (opts.rateLimit ?? !isRead) await this.o.limiter.acquire();
 
+    const headers: Record<string, string> = { accept: 'application/json, text/plain, */*' };
     const session = await this.o.session.getSession();
-    const headers: Record<string, string> = {
-      accept: 'application/json, text/plain, */*',
-      ...session.headers,
-      ...opts.headers,
-    };
     if (session.userAgent) headers['user-agent'] = session.userAgent;
-    const cookie = cookieHeaderFor(session, url);
-    if (cookie) headers.cookie = cookie;
+    if (isWithinDomain(target.hostname, this.domain) || spec.sendSessionToForeignHost === true) {
+      Object.assign(headers, session.headers, this.o.extraHeaders?.(session));
+      const cookie = cookieHeaderFor(session, url);
+      if (cookie) headers.cookie = cookie;
+    }
+    Object.assign(headers, opts.headers);
 
     let body: BodyInit | undefined;
     if (opts.json !== undefined) {
@@ -73,26 +111,72 @@ export class OlxHttpClient {
 
     const maxAttempts = isRead ? 1 + (this.o.maxReadRetries ?? 2) : 1;
     const baseDelay = this.o.retryBaseMs ?? 1_000;
+    const maxDelay = this.o.maxRetryDelayMs ?? MAX_RETRY_DELAY_MS;
+    const timeoutMs = this.o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     for (let attempt = 1; ; attempt++) {
       const started = Date.now();
       let res: Response;
       try {
-        res = await this.transport(url, { method: spec.method, headers, body });
+        res = await this.transport(url, {
+          method: spec.method,
+          headers,
+          body,
+          redirect: 'manual',
+          signal: AbortSignal.timeout(timeoutMs),
+        });
       } catch (err) {
-        this.record(name, spec.method, url, attempt, started, undefined, (err as Error).message);
+        this.record({ name, method: spec.method, url, attempt, started, error: (err as Error).message });
         if (attempt < maxAttempts) {
-          await this.sleep(baseDelay * 2 ** (attempt - 1));
+          await this.sleep(Math.min(baseDelay * 2 ** (attempt - 1), maxDelay));
           continue;
+        }
+        if (!isRead) {
+          throw new UncertainWriteError(
+            name,
+            `Network error or timeout during OLX "${name}" — the request may have been processed`,
+            { cause: err },
+          );
         }
         throw new OlxSdkError(`Network error calling OLX "${name}"`, { cause: err });
       }
 
-      this.record(name, spec.method, url, attempt, started, res.status);
-      if (res.ok) return (await readBody(res)) as T;
+      this.record({ name, method: spec.method, url, attempt, started, status: res.status });
+
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        let where = 'another page';
+        if (location) {
+          try {
+            const loc = new URL(location, url);
+            where = loc.origin + loc.pathname;
+          } catch {
+            /* keep generic */
+          }
+        }
+        this.o.session.invalidate?.();
+        throw new AuthError(
+          `OLX redirected "${name}" (HTTP ${res.status}) to ${where}. The session has probably expired; ` +
+            'run `npm run login` again. If this endpoint legitimately redirects, update its path to the final URL.',
+          res.status,
+        );
+      }
+
+      if (res.ok) {
+        const type = res.headers.get('content-type') ?? '';
+        const payload = await readBody(res);
+        if (type.includes('text/html')) {
+          // An HTML page from an API endpoint is usually a login or challenge page.
+          const message = `OLX answered "${name}" with an HTML page instead of data (login or bot-protection page?)`;
+          if (!isRead) throw new UncertainWriteError(name, message, { status: res.status });
+          throw new OlxSdkError(message);
+        }
+        return payload as T;
+      }
 
       const payload = await readBody(res).catch(() => undefined);
       if (res.status === 401 || res.status === 403) {
+        this.o.session.invalidate?.();
         throw new AuthError(
           `OLX rejected the request to "${name}" with HTTP ${res.status}. The session has probably ` +
             'expired (run `npm run login` again), or bot protection is challenging this client.',
@@ -101,37 +185,50 @@ export class OlxHttpClient {
       }
       if ((res.status === 429 || res.status >= 500) && attempt < maxAttempts) {
         const retryAfter = Number(res.headers.get('retry-after'));
-        const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : baseDelay * 2 ** (attempt - 1);
+        const wanted =
+          Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : baseDelay * 2 ** (attempt - 1);
+        const delay = Math.min(wanted, maxDelay);
         this.logger.warn('Retrying OLX read', { endpoint: name, status: res.status, delay });
         await this.sleep(delay);
         continue;
+      }
+      if (!isRead && res.status >= 500) {
+        throw new UncertainWriteError(name, `OLX returned HTTP ${res.status} for "${name}" — outcome unknown`, {
+          status: res.status,
+          body: payload,
+        });
       }
       throw new OlxHttpError(name, res.status, payload);
     }
   }
 
-  private record(
-    endpoint: string,
-    method: string,
-    url: string,
-    attempt: number,
-    started: number,
-    status?: number,
-    error?: string,
-  ): void {
-    const u = new URL(url);
-    const entry = {
-      ts: new Date(started).toISOString(),
-      endpoint,
-      method,
+  private record(r: {
+    name: string;
+    method: string;
+    url: string;
+    attempt: number;
+    started: number;
+    status?: number;
+    error?: string;
+  }): void {
+    const u = new URL(r.url);
+    const entry: RequestLogEntry = {
+      ts: new Date(r.started).toISOString(),
+      endpoint: r.name,
+      method: r.method,
       url: u.origin + u.pathname, // query strings can carry identifiers; keep them out of the log
-      attempt,
-      durationMs: Date.now() - started,
-      status,
-      error,
+      attempt: r.attempt,
+      durationMs: Date.now() - r.started,
+      status: r.status,
+      error: r.error,
     };
-    this.o.requestLog?.write(entry);
-    this.logger.debug('OLX request', entry);
+    // Logging must never change the outcome of a call (e.g. turn a successful create into a failure).
+    try {
+      this.o.requestLog?.write(entry);
+    } catch (err) {
+      this.logger.warn('Could not write request log', { error: (err as Error).message });
+    }
+    this.logger.debug('OLX request', { ...entry });
   }
 }
 

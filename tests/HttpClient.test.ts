@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseEndpoints } from '../src/endpoints.js';
-import { AuthError, EndpointNotConfiguredError, OlxHttpError, OlxSdkError } from '../src/errors.js';
+import {
+  AuthError,
+  EndpointNotConfiguredError,
+  OlxHttpError,
+  OlxSdkError,
+  UncertainWriteError,
+} from '../src/errors.js';
 import { OlxHttpClient, type Transport } from '../src/http/HttpClient.js';
 import { WriteRateLimiter } from '../src/http/rateLimiter.js';
 import { MemoryRequestLog } from '../src/logger.js';
@@ -74,11 +80,16 @@ describe('OlxHttpClient', () => {
     expect(transport).toHaveBeenCalledTimes(2);
   });
 
-  it('never retries writes (avoids duplicate ads)', async () => {
+  it('never retries writes, and reports a 5xx on a write as an uncertain outcome', async () => {
     const transport = vi.fn<Transport>(async () => jsonResponse({ error: 'busy' }, 503));
     const { client } = makeClient(transport);
-    await expect(client.call('createAd', { json: {} })).rejects.toBeInstanceOf(OlxHttpError);
+    await expect(client.call('createAd', { json: {} })).rejects.toBeInstanceOf(UncertainWriteError);
     expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a 4xx on a write as a definite rejection', async () => {
+    const { client } = makeClient(async () => jsonResponse({ error: 'invalid' }, 422));
+    await expect(client.call('createAd', { json: {} })).rejects.toBeInstanceOf(OlxHttpError);
   });
 
   it('wraps network failures', async () => {

@@ -22,6 +22,12 @@ const SpecSchema = z.object({
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   /** Relative to OLX_BASE_URL, or an absolute URL. `{id}`-style placeholders are filled from params. */
   path: z.string().min(1),
+  /**
+   * Your session (cookies + auth headers) is only ever sent to the OLX domain and its
+   * subdomains. Set this to true ONLY if the capture shows the web app itself sending
+   * its auth headers to this endpoint's other host.
+   */
+  sendSessionToForeignHost: z.boolean().optional(),
 });
 
 export type EndpointSpec = z.infer<typeof SpecSchema>;

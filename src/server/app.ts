@@ -1,17 +1,28 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { RestListingSchema } from '../listings/types.js';
-import type { SyncStore } from '../sync/SyncStore.js';
+import type { SyncRecord, SyncStore } from '../sync/SyncStore.js';
 import type { JobQueue } from './queue.js';
 
 export interface ServerDeps {
   apiKey: string;
   queue: JobQueue;
   store: SyncStore;
+  /** Manual resolution of parked products (see SyncService.link / forget). */
+  resolve: {
+    link(productId: string, adId: string): Promise<SyncRecord>;
+    forget(productId: string): Promise<boolean>;
+  };
   status: () => Promise<Record<string, unknown>>;
 }
 
 const PRODUCT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+
+const ResolveSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('link'), adId: z.string().trim().min(1).max(128) }),
+  z.object({ action: z.literal('forget') }),
+]);
 
 function safeEqual(a: string, b: string): boolean {
   const ha = createHash('sha256').update(a).digest();
@@ -27,7 +38,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 1_000_000 });
 
   app.addHook('onRequest', async (req, reply) => {
-    if (req.url.split('?')[0] === '/health') return;
+    if (req.method === 'GET' && req.url.split('?')[0] === '/health') return;
     const key = req.headers['x-api-key'];
     if (typeof key !== 'string' || !safeEqual(key, deps.apiKey)) {
       return reply.code(401).send({ error: 'unauthorized' });
@@ -46,22 +57,40 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return record;
   });
 
-  app.put<{ Params: { productId: string } }>('/products/:productId/listing', async (req, reply) => {
-    const { productId } = req.params;
-    if (!PRODUCT_ID.test(productId)) return reply.code(400).send({ error: 'invalid_product_id' });
-    const parsed = RestListingSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: 'invalid_listing', issues: parsed.error.issues });
-    }
-    const job = deps.queue.enqueue('upsert', productId, parsed.data);
-    return reply.code(202).send({ jobId: job.id, status: job.status });
-  });
+  app.put<{ Params: { productId: string }; Querystring: { force?: string } }>(
+    '/products/:productId/listing',
+    async (req, reply) => {
+      const { productId } = req.params;
+      if (!PRODUCT_ID.test(productId)) return reply.code(400).send({ error: 'invalid_product_id' });
+      const parsed = RestListingSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_listing', issues: parsed.error.issues });
+      }
+      const force = req.query.force === 'true' || req.query.force === '1';
+      const job = deps.queue.enqueue('upsert', productId, parsed.data, { force });
+      return reply.code(202).send({ jobId: job.id, status: job.status });
+    },
+  );
 
   app.delete<{ Params: { productId: string } }>('/products/:productId/listing', async (req, reply) => {
     const { productId } = req.params;
     if (!PRODUCT_ID.test(productId)) return reply.code(400).send({ error: 'invalid_product_id' });
     const job = deps.queue.enqueue('remove', productId);
     return reply.code(202).send({ jobId: job.id, status: job.status });
+  });
+
+  /**
+   * Resolve a product parked as needs_reconcile / gone:
+   *   { "action": "link", "adId": "…" }  — the ad exists on OLX; manage it from now on
+   *   { "action": "forget" }             — no ad exists; the next sync creates one
+   */
+  app.post<{ Params: { productId: string } }>('/products/:productId/listing/resolve', async (req, reply) => {
+    const { productId } = req.params;
+    if (!PRODUCT_ID.test(productId)) return reply.code(400).send({ error: 'invalid_product_id' });
+    const parsed = ResolveSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_resolution', issues: parsed.error.issues });
+    if (parsed.data.action === 'link') return deps.resolve.link(productId, parsed.data.adId);
+    return { forgotten: await deps.resolve.forget(productId) };
   });
 
   app.get<{ Params: { jobId: string } }>('/jobs/:jobId', async (req, reply) => {
@@ -71,8 +100,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   });
 
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
-    const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
-    void reply.code(status).send({ error: status === 500 ? 'internal_error' : 'bad_request', message: err.message });
+    const status = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
+    // Client errors (bad JSON, body too large) are safe to explain; internal errors are not.
+    void reply
+      .code(status)
+      .send(status === 500 ? { error: 'internal_error' } : { error: 'bad_request', message: err.message });
   });
 
   return app;

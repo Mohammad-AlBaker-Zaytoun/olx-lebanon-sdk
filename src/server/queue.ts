@@ -9,6 +9,8 @@ export interface Job {
   id: string;
   type: JobType;
   productId: string;
+  /** Upsert only: push even if the content is unchanged. */
+  force?: boolean;
   status: JobStatus;
   createdAt: string;
   startedAt?: string;
@@ -46,17 +48,25 @@ export class JobQueue {
     this.logger = opts.logger ?? silentLogger;
   }
 
-  enqueue(type: JobType, productId: string, payload?: ListingInput): Job {
+  enqueue(type: JobType, productId: string, payload?: ListingInput, opts: { force?: boolean } = {}): Job {
     const waitingId = this.pending.find((id) => this.jobs.get(id)?.productId === productId);
     if (waitingId) {
       const job = this.jobs.get(waitingId)!;
       job.type = type;
+      job.force = type === 'upsert' ? Boolean(job.force || opts.force) || undefined : undefined;
       this.payloads.set(waitingId, payload);
       this.logger.debug('Coalesced job', { jobId: job.id, productId, type });
       return job;
     }
 
-    const job: Job = { id: randomUUID(), type, productId, status: 'queued', createdAt: new Date().toISOString() };
+    const job: Job = {
+      id: randomUUID(),
+      type,
+      productId,
+      force: type === 'upsert' && opts.force ? true : undefined,
+      status: 'queued',
+      createdAt: new Date().toISOString(),
+    };
     this.jobs.set(job.id, job);
     this.payloads.set(job.id, payload);
     this.pending.push(job.id);

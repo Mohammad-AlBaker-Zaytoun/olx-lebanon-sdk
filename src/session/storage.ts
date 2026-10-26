@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 export interface StoredCookie {
@@ -27,6 +27,11 @@ export interface SessionStore {
   load(): Promise<SessionData | null>;
   save(data: SessionData): Promise<void>;
   clear(): Promise<void>;
+  /**
+   * Optional cheap change marker (e.g. file mtime). When it changes, the SessionManager
+   * reloads, so a re-login from another process is picked up without a restart.
+   */
+  version?(): Promise<string | undefined>;
 }
 
 /** Stores the session as JSON with owner-only permissions. The file is a secret: keep it out of git. */
@@ -50,6 +55,15 @@ export class FileSessionStore implements SessionStore {
 
   async clear(): Promise<void> {
     await rm(this.file, { force: true });
+  }
+
+  async version(): Promise<string | undefined> {
+    try {
+      const s = await stat(this.file);
+      return `${s.mtimeMs}:${s.size}`;
+    } catch {
+      return undefined;
+    }
   }
 }
 

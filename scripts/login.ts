@@ -6,11 +6,16 @@ import 'dotenv/config';
 import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { loadConfig } from '../src/config.js';
-import { SessionManager } from '../src/session/SessionManager.js';
+import { DEFAULT_CAPTURED_HEADERS, SessionManager } from '../src/session/SessionManager.js';
 import { FileSessionStore } from '../src/session/storage.js';
 
 const config = loadConfig();
-const session = new SessionManager({ baseUrl: config.baseUrl, store: new FileSessionStore(config.sessionFile) });
+const session = new SessionManager({
+  baseUrl: config.baseUrl,
+  store: new FileSessionStore(config.sessionFile),
+  captureHeaders: [...DEFAULT_CAPTURED_HEADERS, ...config.captureHeaders],
+  extraHosts: config.extraHosts,
+});
 
 console.log(`Opening ${config.baseUrl} in a browser window.`);
 console.log('Log in to YOUR OLX account there. Complete any OTP / CAPTCHA by hand.');

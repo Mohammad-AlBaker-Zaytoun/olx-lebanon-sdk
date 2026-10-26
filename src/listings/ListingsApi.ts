@@ -1,3 +1,4 @@
+import { UncertainWriteError } from '../errors.js';
 import type { OlxHttpClient } from '../http/HttpClient.js';
 import type { CatalogMapper } from '../mapping/CatalogMapper.js';
 import type { OlxAdapter } from './adapter.js';
@@ -22,23 +23,42 @@ export class ListingsApi implements ListingsPort {
   constructor(private readonly d: ListingsApiDeps) {}
 
   async create(input: ListingInput): Promise<OlxAd> {
-    // Map first so a bad product fails before any image is uploaded.
+    // Map first so a bad product fails before anything is sent.
     const mapped = this.d.mapper.resolve(input);
+    // Take the write slot before uploading, so images aren't uploaded long before the ad that uses them.
+    await this.d.http.acquireWriteSlot();
     const imageIds = await this.d.images.uploadAll(input.images ?? []);
-    const raw = await this.d.http.call('createAd', { json: this.d.adapter.buildAdPayload(mapped, imageIds) });
-    return this.d.adapter.parseAd(raw);
+    const raw = await this.d.http.call('createAd', {
+      json: this.d.adapter.buildAdPayload(mapped, imageIds),
+      rateLimit: false,
+    });
+    try {
+      return this.d.adapter.parseAd(raw);
+    } catch (err) {
+      // OLX accepted the request, but we can't tell which ad it made: never treat this as "not created".
+      throw new UncertainWriteError('createAd', `OLX accepted the ad but the response could not be read: ${(err as Error).message}`, {
+        cause: err,
+        body: raw,
+      });
+    }
   }
 
   async update(adId: string, input: ListingInput): Promise<OlxAd> {
     const mapped = this.d.mapper.resolve(input);
+    await this.d.http.acquireWriteSlot();
     const imageIds = await this.d.images.uploadAll(input.images ?? []);
     const raw = await this.d.http.call('updateAd', {
       params: { id: adId },
       json: this.d.adapter.buildAdPayload(mapped, imageIds),
+      rateLimit: false,
     });
     // Some edit endpoints answer 204/empty; the ad id doesn't change on edit.
     if (raw === undefined || raw === '') return { id: adId, status: 'unknown', raw };
-    return this.d.adapter.parseAd(raw);
+    try {
+      return this.d.adapter.parseAd(raw);
+    } catch {
+      return { id: adId, status: 'unknown', raw };
+    }
   }
 
   async delete(adId: string): Promise<void> {

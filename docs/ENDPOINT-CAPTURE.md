@@ -23,7 +23,9 @@ You get two files:
 - `captures/olx-flow-<timestamp>.summary.txt`: the API-looking calls, with writes listed first and IDs collapsed to `{id}`.
 
 > [!CAUTION]
-> The HAR contains your password, cookies and tokens. `captures/` is git-ignored. Never commit it, upload it or paste it into an issue.
+> The HAR contains your password, cookies and tokens. `captures/` is git-ignored and written owner-only. Never commit it, upload it or paste it into an issue. The `.summary.txt` only holds methods, paths and status codes, so it's safe to share when you ask for help.
+
+Only requests to the OLX domain are recorded, so a Google or Facebook sign-in isn't saved into the file. If the web app sends a step to another host (a photo upload to an image CDN, say), it won't appear in the summary. To fix that, open DevTools → Network during the capture, find the host, add it to `OLX_EXTRA_HOSTS` in `.env`, and capture again.
 
 ## 2. Identify each operation
 
@@ -53,8 +55,10 @@ Category trees, attribute definitions and location lookups usually show up as `G
 }
 ```
 
-- `path` is relative to `OLX_BASE_URL`, or an absolute URL if the call goes to another host.
+- `path` is relative to `OLX_BASE_URL`, or an absolute https URL if the call goes to another host.
 - `{id}` is replaced with the OLX ad id.
+- Your session (cookies and auth headers) is only sent to the OLX domain and its subdomains. If the capture shows the web app sending its `authorization` header to a different host, for example an upload host, add `"sendSessionToForeignHost": true` to that endpoint only.
+- Use the final URL, not one that redirects: the SDK doesn't follow redirects and treats them as an expired session.
 - Leave anything you didn't see as `null`. `GET /status` on the service shows what's mapped.
 
 ## 4. Fill in `config/catalog.json`
@@ -98,13 +102,26 @@ Tip: put a trimmed, anonymised copy of the real request and response in a unit t
 
 Open `.olx-session/session.json` (never share it) after `npm run login`:
 
-- If `headers.authorization` (or similar) is present, the SDK replays it automatically.
-- If the token lives only in `localStorage` (also saved there), add a header in your adapter flow. Alternatively, extend `captureHeaders` in `SessionManager` with the header name the web app actually sends.
-- Some calls need a CSRF token from a cookie or a page. If writes return 403 while reads work, that's the usual cause.
+- If `headers.authorization` (or similar) is present, the SDK replays it automatically, to OLX hosts only.
+- If the web app sends its token under a header name that isn't captured, add that name to `OLX_CAPTURE_HEADERS` in `.env` (comma-separated) and run `npm run login` again.
+- If the token lives only in `localStorage` (also saved, under `localStorage[origin][key]`), build the header in your adapter:
+
+  ```ts
+  const olxAdapter: OlxAdapter = {
+    ...placeholderAdapter,
+    requestHeaders(session) {
+      const token = session.localStorage?.['https://www.olx.com.lb']?.['<captured key>'];
+      return token ? { authorization: `Bearer ${token}` } : {};
+    },
+  };
+  ```
+
+- Some calls need a CSRF token from a cookie or a page. If writes return 403 while reads work, that's the usual cause. `requestHeaders` is also the place to add it.
+- A re-login is picked up by a running service automatically, with no restart needed.
 
 ## 7. Dry run
 
-1. `npm run build && npm start`
+1. `npm run build`, then `npm start`.
 2. `GET /status`: confirm `loggedIn: true` and the endpoints you mapped show as configured.
 3. `PUT /products/TEST-1/listing` with one real product, then poll `GET /jobs/:id`.
 4. Check the ad on OLX, then `DELETE /products/TEST-1/listing`.
@@ -116,8 +133,10 @@ OLX will change things. Typical symptoms:
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `AuthError` (401/403) on every call | Session expired | `npm run login` |
-| `AuthError` only on writes | CSRF or new header | Recapture, then compare headers |
+| `AuthError` "redirected … to /login" | Session expired, or the path redirects | `npm run login`, or use the final URL in `endpoints.json` |
+| `AuthError` only on writes | CSRF or new header | Recapture, compare headers, add them via `requestHeaders` |
 | `OlxHttpError` 400/422 on create | New required field or renamed attribute | Recapture, then update `catalog.json` or the adapter |
-| 404 on a mapped endpoint | Path changed | Recapture, then update `endpoints.json` |
+| `ReconcileRequiredError` | An earlier create had an unknown outcome, or the ad was removed on OLX | Check "My ads", then `POST /products/:id/listing/resolve` |
+| Every edited product becomes `gone` | `updateAd` path is wrong, so it 404s | Fix `endpoints.json`, then `link` the products back to their ads |
 
 `logs/requests.jsonl` shows the status and timing of every call, which is usually enough to see which step changed.

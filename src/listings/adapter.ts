@@ -1,5 +1,6 @@
 import { OlxSdkError } from '../errors.js';
 import type { MappedListing } from '../mapping/CatalogMapper.js';
+import type { SessionData } from '../session/storage.js';
 import type { AdStatus, OlxAd } from './types.js';
 
 /**
@@ -14,9 +15,16 @@ export interface OlxAdapter {
   parseImageUpload(raw: unknown): string;
   /** Multipart field name OLX expects for the image file. */
   imageFieldName?: string;
+  /**
+   * Extra headers for calls to the OLX domain, built from the saved session — e.g. a
+   * bearer token the web app keeps in localStorage (`session.localStorage[origin][key]`).
+   */
+  requestHeaders?(session: SessionData): Record<string, string>;
 }
 
 type Rec = Record<string, unknown>;
+
+const AD_ID_KEYS = ['id', 'ad_id', 'adId', 'external_id', 'externalID', 'uuid'];
 
 const asRecord = (v: unknown): Rec => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Rec) : {});
 
@@ -43,6 +51,9 @@ export function normalizeStatus(value?: string): AdStatus {
   const s = (value ?? '').toLowerCase();
   // Final states first: "rejected_by_moderator" must not read as "in moderation".
   if (/reject|declin|refus/.test(s)) return 'rejected';
+  // Negated positives ("not_approved", "not_active", "unpublished", "inactive") are not active,
+  // and their exact meaning varies, so don't guess.
+  if (/(^|[^a-z])(not|non)([^a-z]|$)|(^|[^a-z])(un|in)(active|approved|published|live)/.test(s)) return 'unknown';
   if (/delet|remov|archiv|deactiv|disabled/.test(s)) return 'deleted';
   if (/expir|outdated/.test(s)) return 'expired';
   if (/pending|moderat|review|waiting/.test(s)) return 'pending_review';
@@ -71,16 +82,19 @@ export const placeholderAdapter: OlxAdapter = {
   },
 
   parseAd(raw) {
-    const o = unwrap(raw);
-    const id = pick(o, ['id', 'ad_id', 'adId', 'external_id', 'externalID', 'uuid']);
+    // Look at the top level first: `{ id, data: { images } }` must not lose the top-level id.
+    const top = asRecord(raw);
+    const inner = unwrap(raw);
+    const read = (keys: string[]) => pick(top, keys) ?? pick(inner, keys);
+    const id = read(AD_ID_KEYS);
     if (!id) {
       throw new OlxSdkError('Could not find an ad id in the OLX response; update parseAd in your adapter');
     }
     return {
       id,
-      status: normalizeStatus(pick(o, ['status', 'state'])),
-      url: pick(o, ['url', 'permalink', 'share_url', 'shareURL']),
-      title: pick(o, ['title']),
+      status: normalizeStatus(read(['status', 'state'])),
+      url: read(['url', 'permalink', 'share_url', 'shareURL']),
+      title: read(['title']),
       raw,
     };
   },

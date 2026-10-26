@@ -12,10 +12,17 @@ export {
   type EndpointSpec,
 } from './endpoints.js';
 export * from './errors.js';
-export { OlxHttpClient, type CallOptions, type HttpClientOptions, type Transport } from './http/HttpClient.js';
+export {
+  OlxHttpClient,
+  isWithinDomain,
+  sessionDomain,
+  type CallOptions,
+  type HttpClientOptions,
+  type Transport,
+} from './http/HttpClient.js';
 export { WriteRateLimiter, type RateLimiterClock } from './http/rateLimiter.js';
 export { normalizeStatus, placeholderAdapter, type OlxAdapter } from './listings/adapter.js';
-export { ImageUploader, type ImageUploaderOptions } from './listings/images.js';
+export { ImageUploader, isPrivateAddress, type ImageUploaderOptions } from './listings/images.js';
 export { ListingsApi, type ListingsPort } from './listings/ListingsApi.js';
 export * from './listings/types.js';
 export {
@@ -53,6 +60,19 @@ export {
   type SessionStore,
   type StoredCookie,
 } from './session/storage.js';
-export { SyncService, hashListing, type RemoveResult, type UpsertResult } from './sync/SyncService.js';
-export { JsonFileSyncStore, MemorySyncStore, type SyncRecord, type SyncStore } from './sync/SyncStore.js';
+export {
+  SyncService,
+  hashListing,
+  type RemoveResult,
+  type UpsertOptions,
+  type UpsertResult,
+} from './sync/SyncService.js';
+export {
+  JsonFileSyncStore,
+  MemorySyncStore,
+  type SyncRecord,
+  type SyncState,
+  type SyncStore,
+} from './sync/SyncStore.js';
+export { createWebhookNotifier, signWebhook, stripRaw, type WebhookNotifier } from './server/webhook.js';
 export { formatHarSummary, summarizeHar, type HarCall } from './tools/har.js';

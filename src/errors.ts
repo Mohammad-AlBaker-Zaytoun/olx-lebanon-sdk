@@ -37,6 +37,43 @@ export class OlxHttpError extends OlxSdkError {
   }
 }
 
+/**
+ * A write was sent to OLX but its outcome is unknown (network error after sending, 5xx,
+ * or a response the adapter couldn't read). The ad may exist, so it must not be blindly re-sent.
+ */
+export class UncertainWriteError extends OlxSdkError {
+  constructor(
+    public readonly endpoint: string,
+    message: string,
+    options?: { cause?: unknown; status?: number; body?: unknown },
+  ) {
+    super(message, options);
+    this.status = options?.status;
+    this.body = options?.body;
+  }
+  readonly status?: number;
+  readonly body?: unknown;
+}
+
+/**
+ * A product's link to OLX needs a human decision before it can be synced again: an earlier
+ * create had an unknown outcome, or the linked ad no longer exists on OLX.
+ */
+export class ReconcileRequiredError extends OlxSdkError {
+  constructor(
+    public readonly productId: string,
+    public readonly reason: 'uncertain_create' | 'ad_gone',
+  ) {
+    super(
+      reason === 'uncertain_create'
+        ? `Product "${productId}": an earlier create may or may not have posted an ad. Check "My ads" on OLX, ` +
+            'then resolve it: link the ad id if it exists, or forget the link to allow posting again.'
+        : `Product "${productId}": the linked OLX ad no longer exists (deleted or expired on OLX). ` +
+            'Forget the link to post a new ad, or link a different ad id.',
+    );
+  }
+}
+
 /** A product could not be translated into an OLX listing (unknown category, missing attribute…). */
 export class MappingError extends OlxSdkError {
   constructor(

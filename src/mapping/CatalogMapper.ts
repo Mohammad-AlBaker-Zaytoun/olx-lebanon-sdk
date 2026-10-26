@@ -3,7 +3,13 @@ import { z } from 'zod';
 import { MappingError, OlxSdkError } from '../errors.js';
 import type { AttributeValue, ListingInput } from '../listings/types.js';
 
-const Id = z.union([z.string().min(1), z.number()]).transform(String);
+const Id = z.union([z.string().trim().min(1), z.number()]).transform(String);
+
+/** Ids still holding the example-file placeholder; mapping refuses them instead of sending them to OLX. */
+const isPlaceholderId = (id: string): boolean => /^(todo|tbd|xxx+|<.*>)$/i.test(id.trim());
+
+const own = <T>(record: Record<string, T>, key: string): T | undefined =>
+  Object.hasOwn(record, key) ? record[key] : undefined;
 const Attr = z.union([z.string(), z.number(), z.boolean()]);
 
 const CategorySchema = z.object({
@@ -71,10 +77,17 @@ export class CatalogMapper {
 
   resolve(input: ListingInput): MappedListing {
     const issues: string[] = [];
-    const category = this.catalog.categories[input.categoryKey];
-    const location = this.catalog.locations[input.locationKey];
+    // Own-property lookups only: "toString" or "constructor" must not resolve to Object.prototype.
+    const category = own(this.catalog.categories, input.categoryKey);
+    const location = own(this.catalog.locations, input.locationKey);
     if (!category) issues.push(`Unknown categoryKey "${input.categoryKey}" — add it to your catalog file`);
     if (!location) issues.push(`Unknown locationKey "${input.locationKey}" — add it to your catalog file`);
+    if (category && isPlaceholderId(category.olxCategoryId)) {
+      issues.push(`Category "${input.categoryKey}" still has a placeholder olxCategoryId — set the real id`);
+    }
+    if (location && isPlaceholderId(location.olxLocationId)) {
+      issues.push(`Location "${input.locationKey}" still has a placeholder olxLocationId — set the real id`);
+    }
 
     const { titleMaxLength, descriptionMaxLength, maxImages } = this.catalog.limits;
     const title = input.title.trim();
@@ -105,7 +118,7 @@ export class CatalogMapper {
     }
 
     const attributes = Object.fromEntries(
-      Object.entries(merged).map(([key, value]) => [category.attributeMap[key] ?? key, value]),
+      Object.entries(merged).map(([key, value]) => [own(category.attributeMap, key) ?? key, value]),
     );
 
     return {

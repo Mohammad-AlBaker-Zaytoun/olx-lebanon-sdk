@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OlxClient } from '../src/client.js';
 import { parseEndpoints } from '../src/endpoints.js';
-import { AuthError } from '../src/errors.js';
+import { AuthError, ReconcileRequiredError, UncertainWriteError } from '../src/errors.js';
 import type { Transport } from '../src/http/HttpClient.js';
 import { MemorySessionStore } from '../src/session/storage.js';
 import { MemorySyncStore } from '../src/sync/SyncStore.js';
@@ -79,6 +79,17 @@ describe('OlxClient end to end (mocked OLX)', () => {
 
     expect(await client.sync.remove('P-1')).toEqual({ action: 'deleted', adId: 'ad-55' });
     expect(client.endpointStatus()).toMatchObject({ createAd: true, getAd: false });
+  });
+
+  it('parks the product when OLX accepts a create but the response has no readable id', async () => {
+    const { client, transport } = makeClient();
+    transport.mockImplementation(async (url) =>
+      url.startsWith('https://img.olx.com.lb') ? jsonResponse({ id: 'img-1' }) : jsonResponse({ ok: true }, 201),
+    );
+    await expect(client.sync.upsert('P-9', product)).rejects.toBeInstanceOf(UncertainWriteError);
+    expect((await client.syncStore.get('P-9'))?.syncState).toBe('needs_reconcile');
+    await expect(client.sync.upsert('P-9', product)).rejects.toBeInstanceOf(ReconcileRequiredError);
+    expect(transport.mock.calls.filter(([u]) => u.endsWith('/api/ads'))).toHaveLength(1);
   });
 
   it('rejects image hosts outside the allowlist before touching OLX', async () => {
