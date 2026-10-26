@@ -345,17 +345,19 @@ describe('round 2: docs-driven fixes', () => {
     await app.close();
   });
 
-  it('fromConfig logs by default (missing config files are reported)', async () => {
+  it('fromConfig logs by default; config files are optional (built-in endpoints, OLX ids)', async () => {
     const { loadConfig } = await import('../src/config.js');
     const lines: string[] = [];
     const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
       lines.push(String(chunk));
       return true;
     });
+    let client: OlxClient;
     try {
       const dir = mkdtempSync(join(tmpdir(), 'olx-cfg-'));
-      OlxClient.fromConfig(
+      client = OlxClient.fromConfig(
         loadConfig({
+          LOG_LEVEL: 'debug',
           OLX_ENDPOINTS_FILE: join(dir, 'missing-endpoints.json'),
           OLX_CATALOG_FILE: join(dir, 'missing-catalog.json'),
           OLX_REQUEST_LOG_FILE: join(dir, 'r.jsonl'),
@@ -364,7 +366,8 @@ describe('round 2: docs-driven fixes', () => {
     } finally {
       spy.mockRestore();
     }
-    expect(lines.join('')).toMatch(/Catalog file not found/);
+    expect(lines.join('')).toMatch(/No catalog file/);
+    expect(client!.missingEndpoints()).toEqual([]);
   });
 
   it('warns when a custom ListingsPort ignores beforeSend', async () => {

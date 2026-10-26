@@ -1,0 +1,76 @@
+import { loadConfig } from '../../config.js';
+import { olxLebanonBearer } from '../../listings/olxLebanon.js';
+import { DEFAULT_CAPTURED_HEADERS, SessionManager } from '../../session/SessionManager.js';
+import { FileSessionStore } from '../../session/storage.js';
+import type { Command } from '../index.js';
+import { CliError, parseFlags, resolveFrom } from '../util.js';
+
+export const login: Command = {
+  summary: 'Sign in to your OLX account in a browser window and save the session',
+  usage: `Usage: olx-lb login
+
+Opens a browser on OLX Lebanon. Sign in yourself (complete any code or CAPTCHA by hand),
+then press Enter in the terminal. The session is saved to OLX_SESSION_FILE
+(default .olx-session/session.json). It gives full access to your account: keep it private.
+
+Needs Playwright: npm install playwright && npx playwright install chromium`,
+
+  async run(args, ctx) {
+    parseFlags(args, {});
+    const config = loadConfig();
+    const file = resolveFrom(ctx, config.sessionFile);
+    const session = new SessionManager({
+      baseUrl: config.baseUrl,
+      store: new FileSessionStore(file),
+      captureHeaders: [...DEFAULT_CAPTURED_HEADERS, ...config.captureHeaders],
+      extraHosts: config.extraHosts,
+    });
+    ctx.out(`Opening ${config.baseUrl} in a browser window.`);
+    ctx.out('Sign in to YOUR OLX account there. Complete any code or CAPTCHA by hand.');
+    const saved = await session.loginInteractive(async () => {
+      await ctx.ask('\nPress Enter here once you can see you are signed in… ');
+    });
+    const token = olxLebanonBearer(saved);
+    ctx.out(`\nSession saved to ${file}`);
+    ctx.out(`  cookies: ${saved.cookies.length}`);
+    ctx.out(`  access token: ${token ? 'found' : 'NOT found (sign in, then press Enter again with \`olx-lb login\`)'}`);
+    if (!token) throw new CliError('No access token was captured; the session may not be signed in.');
+    ctx.out('\nKeep this file private: it gives full access to your OLX account.');
+    ctx.out('For a Node.js or Next.js app: `olx-lb token` prints the token for an environment variable.');
+  },
+};
+
+export const token: Command = {
+  summary: 'Print the access token from the saved session (for OLX_ACCESS_TOKEN in your app)',
+  usage: `Usage: olx-lb token [--yes]
+
+Prints the bearer token saved by \`olx-lb login\`, so you can store it as a secret
+environment variable (e.g. OLX_ACCESS_TOKEN) and pass it to createOlxClient({ accessToken }).
+Anyone with this token can manage your OLX account: never commit it or put it in browser code.
+
+Options:
+  --yes   print without asking for confirmation`,
+
+  async run(args, ctx) {
+    const { flags } = parseFlags(args, { yes: 'boolean' });
+    const config = loadConfig();
+    const saved = await new FileSessionStore(resolveFrom(ctx, config.sessionFile)).load();
+    if (!saved) throw new CliError('No saved session. Run `olx-lb login` first.');
+    const value = olxLebanonBearer(saved);
+    if (!value) throw new CliError('The saved session has no access token. Run `olx-lb login` again.');
+    const payload = value.split('.')[1];
+    let expires = '';
+    try {
+      const exp = (JSON.parse(Buffer.from(payload ?? '', 'base64url').toString('utf8')) as { exp?: number }).exp;
+      if (typeof exp === 'number') expires = new Date(exp * 1000).toISOString().slice(0, 10);
+    } catch {
+      /* not a readable JWT */
+    }
+    if (!flags.yes) {
+      const answer = (await ctx.ask('This prints a secret that gives full access to your OLX account. Continue? [y/N] ')).trim();
+      if (!/^y(es)?$/i.test(answer)) return 1;
+    }
+    ctx.out(value);
+    if (expires) ctx.err(`(expires ${expires})`);
+  },
+};

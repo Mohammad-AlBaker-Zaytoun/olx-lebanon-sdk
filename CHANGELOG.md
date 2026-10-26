@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.0 — 2026-10-26
+
+A library you install in a Node.js or Next.js app and call directly.
+
+### Added
+
+- `createOlxClient(options)`: configure everything in code (`accessToken`, `store`, `catalog`, `contact`, `writeLimits`…), with no files or environment variables. OLX Lebanon's endpoints are built in.
+- `client.ads`: `create`, `update`, `delete`, `list`, `find`, `status` by OLX id. On `update`, leaving `images` out keeps the ad's photos, and passing `images` replaces them.
+- `client.catalog`: `findCategories`, `fields`, `locations`, `location`. Categories and fields are read live from OLX's public API and cached for an hour. Locations ship with the SDK (662 entries, including Arabic names).
+- Ads and products can use OLX ids directly (`categoryId`, `locationId`, OLX attribute names); the catalog file is optional. Keys and ids can be mixed, and the REST body accepts both.
+- The `olx-lb` CLI ships in the package: `init`, `login`, `token`, `check`, `catalog`, `test-post`, `serve`, `capture`. It replaces the repo-only `npm run` scripts, which remain as aliases.
+- `startServer()` in `olx-lebanon-sdk/server`.
+- Verified in a Next.js 15 (webpack) and 16 (Turbopack) app with no configuration.
+
+### Changed (breaking)
+
+- Entry points: the main import is the library only (it loads `zod` and nothing else). The REST service moved to `olx-lebanon-sdk/server` (`buildServer`, `startServer`, `JobQueue`, webhooks), and the capture tools to `olx-lebanon-sdk/tools`.
+- `playwright` is now an optional peer dependency, needed only for `olx-lb login` and `olx-lb capture`.
+- `ListingInput.categoryKey` and `locationKey` are optional; give either the key or the OLX id.
+- `config/endpoints.json` is optional: without it, the built-in endpoints are used.
+
+
 ## 0.2.0 — 2026-10-26
 
 Real OLX Lebanon wire format, mapped from a capture of the web app.

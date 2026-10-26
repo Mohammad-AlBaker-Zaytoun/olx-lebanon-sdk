@@ -1,4 +1,4 @@
-import { AuthError } from '../errors.js';
+import { AuthError, OlxSdkError } from '../errors.js';
 import { silentLogger, type Logger } from '../logger.js';
 import type { SessionData, SessionStore, StoredCookie } from './storage.js';
 
@@ -59,6 +59,22 @@ export function preferCapturedHeader(name: string, current: string | undefined, 
   return next;
 }
 
+/**
+ * Playwright is an optional peer dependency: only `olx-lb login` and `olx-lb capture` need it.
+ * The specifier is hidden from bundlers (Next.js, webpack) so apps that never log in from
+ * code don't need it installed.
+ */
+export async function loadPlaywright(): Promise<typeof import('playwright')> {
+  const name = 'playwright';
+  try {
+    return (await import(/* webpackIgnore: true */ /* @vite-ignore */ name)) as typeof import('playwright');
+  } catch {
+    throw new OlxSdkError(
+      'Signing in opens a browser, which needs Playwright: run `npm install playwright` and `npx playwright install chromium`.',
+    );
+  }
+}
+
 /** Headers worth replaying if the web app sends them on authenticated calls. Extend via options. */
 export const DEFAULT_CAPTURED_HEADERS = ['authorization', 'x-access-token', 'x-auth-token', 'x-csrf-token'];
 
@@ -91,7 +107,9 @@ export class SessionManager implements SessionProvider {
   async getSession(): Promise<SessionData> {
     const s = await this.current();
     if (!s) {
-      throw new AuthError('No saved OLX session. Run `npm run login` and sign in to your OLX account.');
+      throw new AuthError(
+        'No OLX session. Pass `accessToken` to createOlxClient (get one with `npx olx-lb login`), or run `olx-lb login`.',
+      );
     }
     return s;
   }
@@ -140,7 +158,7 @@ export class SessionManager implements SessionProvider {
    * `waitForUser` resolves (e.g. you press Enter in the terminal) and the session is saved.
    */
   async loginInteractive(waitForUser: () => Promise<void>): Promise<SessionData> {
-    const { chromium } = await import('playwright');
+    const { chromium } = await loadPlaywright();
     const browser = await chromium.launch({ headless: false });
     try {
       const context = await browser.newContext({ locale: 'en-US' });

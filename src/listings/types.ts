@@ -8,16 +8,28 @@ export type ImageSource =
   | { data: Uint8Array; filename: string; contentType?: string };
 
 /**
- * A product, described in your store's terms. `categoryKey` and `locationKey`
- * are keys from your catalog file, which maps them to OLX's own IDs.
+ * An ad's content. Give the category and the location either as OLX ids (`categoryId`,
+ * `locationId`, from `client.catalog`) or as keys from your catalog file (`categoryKey`,
+ * `locationKey`), which maps your own names to OLX's ids and fields.
  */
 export interface ListingInput {
   title: string;
   description: string;
+  /** In `currency` (USD by default). */
   price: number;
   currency?: 'USD' | 'LBP';
-  categoryKey: string;
-  locationKey: string;
+  /** OLX's category id, e.g. "175" for laptops. Only categories without subcategories. */
+  categoryId?: string | number;
+  /** A key from your catalog file. Use this or `categoryId`. */
+  categoryKey?: string;
+  /** OLX's location id of an area (not a district), e.g. "47" for Beirut > Hamra. */
+  locationId?: string | number;
+  /** A key from your catalog file. Use this or `locationId`. */
+  locationKey?: string;
+  /**
+   * The category's fields: OLX's attribute names and choice values when you use
+   * `categoryId` (see `client.catalog.fields()`), or your catalog's names with `categoryKey`.
+   */
   attributes?: Record<string, AttributeValue>;
   images?: ImageSource[];
 }
@@ -76,6 +88,9 @@ const Price = z.preprocess(
   z.number().finite().nonnegative(),
 );
 
+/** An OLX id sent as a number or a string ("175"). */
+const OlxId = z.union([z.string().trim().regex(/^\d+$/, 'must be a numeric OLX id'), z.number().int().positive()]).transform(String);
+
 /** PHP's json_encode turns an empty associative array into `[]`; treat it as `{}`. */
 const Attributes = z.preprocess(
   (v) => (Array.isArray(v) && v.length === 0 ? {} : v),
@@ -87,8 +102,10 @@ export const RestListingSchema = z.object({
   description: z.string().trim().min(1),
   price: Price,
   currency: z.enum(['USD', 'LBP']).default('USD'),
-  categoryKey: z.string().min(1),
-  locationKey: z.string().min(1),
+  categoryKey: z.string().min(1).optional(),
+  categoryId: OlxId.optional(),
+  locationKey: z.string().min(1).optional(),
+  locationId: OlxId.optional(),
   attributes: Attributes.default({}),
   images: z
     .array(
@@ -104,6 +121,14 @@ export const RestListingSchema = z.object({
     )
     .max(30)
     .default([]),
-});
+})
+  .refine((l) => (l.categoryKey === undefined) !== (l.categoryId === undefined), {
+    message: 'give either categoryKey or categoryId',
+    path: ['categoryId'],
+  })
+  .refine((l) => (l.locationKey === undefined) !== (l.locationId === undefined), {
+    message: 'give either locationKey or locationId',
+    path: ['locationId'],
+  });
 
 export type RestListing = z.infer<typeof RestListingSchema>;

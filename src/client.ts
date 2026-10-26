@@ -5,7 +5,9 @@ import { endpointStatus, loadEndpoints, type EndpointMap, type EndpointName } fr
 import { OlxHttpClient, type HttpClientOptions, type Transport } from './http/HttpClient.js';
 import { WriteRateLimiter, type RateLimiterClock } from './http/rateLimiter.js';
 import { placeholderAdapter, type OlxAdapter } from './listings/adapter.js';
-import { olxLebanonAdapter } from './listings/olxLebanon.js';
+import { OlxCatalog, type OlxCatalogOptions } from './catalog/OlxCatalog.js';
+import { AdsApi } from './listings/AdsApi.js';
+import { OLX_LB_ENDPOINTS, olxLebanonAdapter } from './listings/olxLebanon.js';
 import type { ContactSettings } from './listings/types.js';
 import { ImageUploader, type ImageUploaderOptions } from './listings/images.js';
 import { ListingsApi } from './listings/ListingsApi.js';
@@ -42,10 +44,20 @@ export interface OlxClientOptions {
   http?: Pick<HttpClientOptions, 'timeoutMs' | 'maxReadRetries' | 'retryBaseMs' | 'maxRetryDelayMs'>;
   /** Tuning for product image downloads. */
   images?: Pick<ImageUploaderOptions, 'maxBytes' | 'timeoutMs' | 'totalTimeoutMs' | 'maxRedirects'>;
+  /** Options for `client.catalog` (public category and location data). */
+  catalogApi?: OlxCatalogOptions;
 }
 
-/** Everything wired together. Most users only need `client.sync` (or `client.listings`). */
+/**
+ * Everything wired together. Most apps need three parts:
+ * - `ads`: create, edit, delete and list your ads by OLX id;
+ * - `sync`: keep one ad per product of your store (create once, edit in place, skip unchanged);
+ * - `catalog`: OLX's categories, their fields, and locations.
+ * Create one with `createOlxClient()`.
+ */
 export class OlxClient {
+  readonly ads: AdsApi;
+  readonly catalog: OlxCatalog;
   readonly session: SessionManager;
   readonly http: OlxHttpClient;
   readonly listings: ListingsApi;
@@ -98,6 +110,8 @@ export class OlxClient {
       session: this.session,
       logger,
     });
+    this.ads = new AdsApi(this.listings);
+    this.catalog = new OlxCatalog(opts.catalogApi);
     this.syncStore = opts.syncStore;
     this.sync = new SyncService({ listings: this.listings, store: opts.syncStore, mapper: this.mapper, logger });
   }
@@ -111,17 +125,14 @@ export class OlxClient {
     overrides: Partial<Omit<OlxClientOptions, 'baseUrl' | 'writeLimits'>> = {},
   ): OlxClient {
     const logger = overrides.logger ?? createLogger(config.logLevel);
-    for (const [label, file, provided] of [
-      ['Endpoints file', config.endpointsFile, overrides.endpoints],
-      ['Catalog file', config.catalogFile, overrides.catalog],
-    ] as const) {
-      if (!provided && !existsSync(file)) {
-        logger.warn(`${label} not found; continuing with an empty one`, {
-          path: resolve(file),
-          hint: 'Copy the matching config/*.example.json, or check the working directory / env path',
-        });
-      }
+    // Both files are optional: the endpoints are built in, and ads can use OLX ids directly.
+    if (!overrides.catalog && !existsSync(config.catalogFile)) {
+      logger.debug('No catalog file; categoryKey / locationKey are unavailable (OLX ids still work)', {
+        path: resolve(config.catalogFile),
+      });
     }
+    const endpoints =
+      overrides.endpoints ?? (existsSync(config.endpointsFile) ? loadEndpoints(config.endpointsFile) : OLX_LB_ENDPOINTS);
     return new OlxClient({
       baseUrl: config.baseUrl,
       writeLimits: config.writeLimits,
@@ -130,7 +141,7 @@ export class OlxClient {
       captureHeaders: config.captureHeaders,
       adapter: config.adapter === 'placeholder' ? placeholderAdapter : olxLebanonAdapter,
       contact: config.contact,
-      endpoints: overrides.endpoints ?? loadEndpoints(config.endpointsFile),
+      endpoints,
       catalog: overrides.catalog ?? loadCatalog(config.catalogFile),
       sessionStore: overrides.sessionStore ?? new FileSessionStore(config.sessionFile),
       syncStore: overrides.syncStore ?? new JsonFileSyncStore(config.syncStoreFile),

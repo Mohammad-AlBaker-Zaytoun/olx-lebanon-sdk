@@ -1,7 +1,7 @@
 {
   "name": "olx-lebanon-sdk",
-  "version": "0.2.0",
-  "description": "Unofficial TypeScript SDK and local REST service for posting and managing your own listings on OLX Lebanon.",
+  "version": "0.3.0",
+  "description": "Post, edit and delete your own OLX Lebanon ads from Node.js and Next.js: typed client, product sync, catalog lookup, CLI and an optional REST service.",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -10,17 +10,29 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./server": {
+      "types": "./dist/server/exports.d.ts",
+      "import": "./dist/server/exports.js"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "import": "./dist/tools/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
+    "olx-lb": "dist/cli/index.js",
     "olx-lb-server": "dist/server/index.js"
   },
   "files": [
     "dist",
     "config/*.example.json",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
+  "sideEffects": false,
   "engines": {
     "node": ">=20"
   },
@@ -29,23 +41,30 @@
     "prepare": "npm run build",
     "dev": "tsx watch src/server/index.ts",
     "start": "node dist/server/index.js",
-    "login": "tsx scripts/login.ts",
-    "capture": "tsx scripts/capture-flow.ts",
-    "capture:shapes": "tsx scripts/har-shapes.ts",
-    "catalog": "tsx scripts/catalog.ts",
-    "live-test": "tsx scripts/live-test.ts",
+    "olx": "tsx src/cli/index.ts",
+    "login": "tsx src/cli/index.ts login",
+    "capture": "tsx src/cli/index.ts capture",
+    "capture:shapes": "tsx src/cli/index.ts capture shapes",
+    "catalog": "tsx src/cli/index.ts catalog",
+    "live-test": "tsx src/cli/index.ts test-post",
+    "update-locations": "tsx scripts/update-locations.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "keywords": [
-    "olx",
-    "olx-lebanon",
-    "dubizzle",
     "classifieds",
+    "dubizzle",
     "listings",
-    "sdk",
+    "marketplace",
+    "nextjs",
+    "nodejs",
+    "olx",
+    "olx-lb",
+    "olx-lebanon",
     "playwright",
+    "sdk",
+    "typescript",
     "unofficial"
   ],
   "author": "Mohammad AlBaker Zaytoun (https://www.zaytoun.dev/)",
@@ -53,13 +72,21 @@
   "dependencies": {
     "dotenv": "^16.6.1",
     "fastify": "^5.12.7",
-    "playwright": "^1.64.1",
     "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "playwright": "^1.64.1"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "playwright": "^1.64.1"
   }
 }

@@ -94,16 +94,39 @@ export class CatalogMapper {
 
   resolve(input: ListingInput): MappedListing {
     const issues: string[] = [];
+    let categoryId: string | undefined;
+    let locationId: string | undefined;
     // Own-property lookups only: "toString" or "constructor" must not resolve to Object.prototype.
-    const category = own(this.catalog.categories, input.categoryKey);
-    const location = own(this.catalog.locations, input.locationKey);
-    if (!category) issues.push(`Unknown categoryKey "${input.categoryKey}" — add it to your catalog file`);
-    if (!location) issues.push(`Unknown locationKey "${input.locationKey}" — add it to your catalog file`);
-    if (category && isPlaceholderId(category.olxCategoryId)) {
-      issues.push(`Category "${input.categoryKey}" still has a placeholder olxCategoryId — set the real id`);
+    let category: Catalog['categories'][string] | undefined;
+
+    if (input.categoryId !== undefined && input.categoryKey !== undefined) {
+      issues.push('Give categoryId or categoryKey, not both');
+    } else if (input.categoryId !== undefined) {
+      categoryId = String(input.categoryId).trim();
+      if (!/^\d+$/.test(categoryId)) issues.push(`categoryId "${categoryId}" is not a numeric OLX category id`);
+    } else if (input.categoryKey !== undefined) {
+      category = own(this.catalog.categories, input.categoryKey);
+      if (!category) issues.push(`Unknown categoryKey "${input.categoryKey}" — add it to your catalog file`);
+      else if (isPlaceholderId(category.olxCategoryId)) {
+        issues.push(`Category "${input.categoryKey}" still has a placeholder olxCategoryId — set the real id`);
+      } else categoryId = category.olxCategoryId;
+    } else {
+      issues.push('Give the category: categoryId (an OLX id) or categoryKey (from your catalog file)');
     }
-    if (location && isPlaceholderId(location.olxLocationId)) {
-      issues.push(`Location "${input.locationKey}" still has a placeholder olxLocationId — set the real id`);
+
+    if (input.locationId !== undefined && input.locationKey !== undefined) {
+      issues.push('Give locationId or locationKey, not both');
+    } else if (input.locationId !== undefined) {
+      locationId = String(input.locationId).trim();
+      if (!/^\d+$/.test(locationId)) issues.push(`locationId "${locationId}" is not a numeric OLX location id`);
+    } else if (input.locationKey !== undefined) {
+      const location = own(this.catalog.locations, input.locationKey);
+      if (!location) issues.push(`Unknown locationKey "${input.locationKey}" — add it to your catalog file`);
+      else if (isPlaceholderId(location.olxLocationId)) {
+        issues.push(`Location "${input.locationKey}" still has a placeholder olxLocationId — set the real id`);
+      } else locationId = location.olxLocationId;
+    } else {
+      issues.push('Give the location: locationId (an OLX area id) or locationKey (from your catalog file)');
     }
 
     const { titleMaxLength, descriptionMaxLength, maxImages } = this.catalog.limits;
@@ -139,21 +162,24 @@ export class CatalogMapper {
       }
     }
 
-    if (issues.length > 0 || !category || !location) {
+    if (issues.length > 0 || categoryId === undefined || locationId === undefined) {
       throw new MappingError(`Cannot map listing "${input.title}": ${issues.join('; ')}`, issues);
     }
 
-    const attributes = Object.fromEntries(
-      Object.entries(merged).map(([key, value]) => {
-        const values = own(category.valueMap, key);
-        const mappedValue = values ? lookupValue(values, value) : value;
-        return [own(category.attributeMap, key) ?? key, mappedValue];
-      }),
-    );
+    // With a catalog category, rename attributes and translate values; raw ids pass them as given.
+    const attributes = category
+      ? Object.fromEntries(
+          Object.entries(merged).map(([key, value]) => {
+            const values = own(category!.valueMap, key);
+            const mappedValue = values ? lookupValue(values, value) : value;
+            return [own(category!.attributeMap, key) ?? key, mappedValue];
+          }),
+        )
+      : merged;
 
     return {
-      categoryId: category.olxCategoryId,
-      locationId: location.olxLocationId,
+      categoryId,
+      locationId,
       title,
       description,
       price: input.price,

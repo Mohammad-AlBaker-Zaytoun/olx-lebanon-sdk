@@ -1,121 +1,216 @@
 # olx-lebanon-sdk
 
-An **unofficial** TypeScript SDK and local REST service for posting and managing **your own** listings on [OLX Lebanon](https://www.olx.com.lb).
+Post, edit and delete **your own** ads on [OLX Lebanon](https://www.olx.com.lb) from Node.js and Next.js: a typed client, product sync, catalog lookup, a CLI, and an optional REST service for other languages.
 
-OLX Group publishes partner APIs for some countries, but OLX Lebanon runs on Dubizzle Group's platform and has no public API or SDK. This project fills that gap for one use case: a seller automating **their own account**. It lets a store backend create, edit and remove its products' ads the same way it pushes to any other sales channel.
+OLX Lebanon runs on Dubizzle Group's platform and has no public API. This SDK does what the OLX website does when you post by hand, using your own signed-in account, so a store or app can list its products automatically.
 
 > [!WARNING]
 > **Unofficial — use at your own risk.** This project is not affiliated with, endorsed by, or supported by OLX, Dubizzle Group, or any of their affiliates. Automating an account may conflict with OLX's Terms of Use, and OLX can change its website at any time and break this tool. You alone are responsible for how you use it. See [Responsible use](#responsible-use).
 
----
+```ts
+import { createOlxClient } from 'olx-lebanon-sdk';
 
-## How it works
+const olx = createOlxClient({ accessToken: process.env.OLX_ACCESS_TOKEN });
 
-```
- Your store backend (PHP, etc.)
-            │  HTTP + X-Api-Key
-            ▼
- ┌──────────────────────────────────────────┐
- │ REST service (Fastify, localhost only)   │
- │   PUT/DELETE /products/:id/listing       │
- │            │                             │
- │            ▼                             │
- │ Job queue  — one job at a time,          │
- │              bursts per product coalesced│
- │            │                             │
- │            ▼                             │
- │ SyncService — product ↔ ad link,         │
- │              create once / edit / skip   │
- │            │                             │
- │            ▼                             │
- │ CatalogMapper — your categories &        │
- │                 locations → OLX ids      │
- │            │                             │
- │            ▼                             │
- │ HTTP client — saved session, write       │
- │               throttling, request log,   │
- │               photo upload to OLX's S3   │
- └────────────┼─────────────────────────────┘
-              ▼
-          OLX Lebanon
+const ad = await olx.ads.create({
+  title: 'Dell Latitude 5440',
+  description: '16 GB RAM, 512 GB SSD, 1 year warranty',
+  price: 899,                                  // USD
+  categoryId: '175',                           // Laptops, Tablets, Computers
+  locationId: '47',                            // Beirut > Hamra
+  attributes: { make: '3', type: '1', new_used: '1' }, // Dell, Laptop, New
+  images: [{ url: 'https://shop.example.com/dell-5440.jpg' }],
+});
+console.log(ad.id, ad.status); // "117146151" "active"
 ```
 
-- **Session.** You log in yourself in a real browser window (`npm run login`), and complete any OTP or CAPTCHA by hand. The SDK saves the cookies and auth headers, then reuses them for plain HTTP calls.
-- **Endpoints are configuration, not code.** OLX's internal endpoints aren't documented. The ones the web app uses were recorded from a real session and ship in `config/endpoints.example.json`. The ad API lives on Dubizzle Group's backend (`api-prod.olx-dubizzle.com`), and photos go to S3 through a signed URL. If OLX changes them, recapture with `npm run capture` ([docs/ENDPOINT-CAPTURE.md](docs/ENDPOINT-CAPTURE.md)).
-- **Adapter.** OLX's exact request and response formats live in one swappable object (`OlxAdapter`). The built-in `olxLebanonAdapter` (the default) matches the captured format. If OLX changes it, pass your own adapter instead of editing SDK code.
-- **Photos.** Each product photo is downloaded from your store, uploaded to OLX's own storage through a one-time signed URL, and attached to the ad by name and size, as the web app does. The session is never sent to the upload host. On an edit, unchanged photos aren't uploaded again and the ad keeps them. Changed photos replace the old ones, which are removed with `deleted_photos`.
-- **Sync, don't spam.** Each store product maps to exactly one ad. Changed products are edited in place, never reposted. Content that hasn't changed is never sent. Writes are spaced out with jitter and capped per hour, and they are never retried automatically, because a retry could create a duplicate ad.
+## Contents
 
-## Status
+- [Install](#install)
+- [Get an access token](#get-an-access-token)
+- [Ads](#ads)
+- [Product sync](#product-sync)
+- [Catalog: categories, fields, locations](#catalog-categories-fields-locations)
+- [Next.js](#nextjs)
+- [CLI](#cli)
+- [REST service (PHP, Python, .NET…)](#rest-service-php-python-net)
+- [Configuration](#configuration)
+- [Errors](#errors)
+- [Status and limits](#status-and-limits)
+- [Security notes](#security-notes)
+- [Responsible use](#responsible-use)
 
-The endpoints and wire format are mapped from a capture of the OLX Lebanon web app (October 2026) and **verified against live OLX** on 26 October 2026 with a test product (`npm run live-test`):
-
-- **Create:** the photo is uploaded to S3 and the ad goes live with its photo. The state is read back from My ads.
-- **Edit with the same photos:** the price changes and nothing is re-uploaded. The ad keeps its photos.
-- **Edit with new photos:** the new ones are uploaded and the old ones are removed (`deleted_photos`).
-- **Delete:** the ad is removed.
-
-OLX puts an edited ad back into review (`pending_review`) for a while, as it does for edits made by hand. Before you post, fill in **your** categories and locations in `config/catalog.json` (see [Catalog](#catalog)).
-
-### Free-ad limits
-
-OLX Lebanon gives each account a limited number of free ads per category. An ad posted past that limit is created but stays hidden in the `limited` state until you buy a package on OLX. The SDK never buys packages for you.
-
-OLX's post-ad answer has no state, so right after a create (or an edit without one), and only after the link is saved, the SDK checks the newest pages of "My ads" once. If it finds the ad there, `status` in the sync record, `/jobs` and the webhook becomes `limited`, `pending_review` or `active`. If the check fails, `status` stays `unknown` and the create still counts as done. The status isn't refreshed later, for example after you buy a package: the next edit of that product reads it again.
-
-## Quick start
-
-Requirements: Node.js 20 or newer. Run every command **from the project folder**: `.env` and the `config/`, `data/` and `logs/` paths are resolved from the current working directory.
-
-**Windows (PowerShell):**
-
-```powershell
-npm install                                    # also builds dist/
-npx playwright install chromium                # browser used for login and capture
-
-Copy-Item .env.example .env                    # then set SERVER_API_KEY
-Copy-Item config\endpoints.example.json config\endpoints.json
-Copy-Item config\catalog.example.json config\catalog.json
-
-npm run login                                  # sign in to your OLX account
-npm run catalog -- categories laptop           # find OLX category ids
-npm run catalog -- fields 175                  # their posting fields -> catalog.json
-npm run catalog -- locations beirut            # area ids -> catalog.json locations
-
-npm run live-test -- check                     # read-only check of session, catalog, account
-npm run live-test -- create                    # optional: post, edit, delete one test ad
-npm run live-test -- edit
-npm run live-test -- delete
-
-npm run build
-npm start                                      # REST service on 127.0.0.1:8787
-```
-
-**macOS / Linux / Git Bash:**
+## Install
 
 ```bash
-npm install
-npx playwright install chromium
-cp .env.example .env
-cp config/endpoints.example.json config/endpoints.json
-cp config/catalog.example.json config/catalog.json
-npm run login
-npm run catalog -- categories laptop
-npm run catalog -- fields 175
-npm run catalog -- locations beirut
-npm run live-test -- check
-npm run build && npm start
+npm install olx-lebanon-sdk
 ```
 
-Generate an API key (and a separate webhook secret, if you use webhooks) with:
+- **Runtime:** Node.js 20 or newer, ESM. Use `import`, not `require()`. On Node 22, `require()` of ESM also works.
+- **Server-side only:** it uses Node APIs (crypto, DNS, file system) and your access token. In Next.js, use it in route handlers, server actions and server components, with the Node.js runtime and not the Edge runtime.
+- **One-time sign-in:** this opens a browser and needs Playwright as a dev tool (`npm install -D playwright && npx playwright install chromium`). Your app itself never needs Playwright.
+
+## Get an access token
+
+You sign in once, by hand, in a real browser window. Complete any code or CAPTCHA yourself; the SDK never automates those. Then copy the token into your app's secrets:
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+npx olx-lb login     # opens a browser: sign in to OLX, then press Enter in the terminal
+npx olx-lb token     # prints the access token
 ```
 
-If you run the service from Task Scheduler, NSSM or a Windows service, set its working directory ("Start in") to the project folder.
+Store it as an environment variable, for example `OLX_ACCESS_TOKEN` in `.env.local` or your host's secret settings. The token lasts about a year. Treat it like a password: anyone who has it can manage your OLX account. Never commit it or send it to the browser. When it expires, or after you change your OLX password, run `olx-lb login` again.
 
-## REST API
+## Ads
+
+`olx.ads` works with ads by their OLX id. Nothing is stored on your side.
+
+```ts
+const ad = await olx.ads.create(input);       // → { id, status, title, raw }
+await olx.ads.update(ad.id, { ...input, price: 849 });
+await olx.ads.delete(ad.id);
+const { ads, hasMore } = await olx.ads.list({ page: 1, perPage: 20 });
+const found = await olx.ads.find('117146151');
+```
+
+| `AdInput` field | |
+| --- | --- |
+| `title`, `description` | Required. OLX's limits are 70 and 4,096 characters. |
+| `price`, `currency` | `currency` is `USD` (default) or `LBP`. USD goes in OLX's price field, LBP in its "LL" field. |
+| `categoryId` | OLX's category id. Only categories without subcategories (see [Catalog](#catalog-categories-fields-locations)). |
+| `locationId` | An **area** id, e.g. Beirut > Hamra (`47`). A district on its own is rejected by OLX. |
+| `attributes` | The category's fields as OLX names them, with OLX's choice values, e.g. `{ make: '3' }` for Dell. Required fields depend on the category. |
+| `images` | `{ url }` (https, public), `{ path }` (a local file) or `{ data, filename }` (a `Uint8Array`/`Buffer`, e.g. an upload). JPEG, PNG, WebP or GIF, up to 10 MB each, max 20. |
+
+- **Updates replace the whole ad.** OLX's edit needs every field, not only the changed ones.
+- **Photos on update:** leave `images` out to keep the ad's current photos. Pass `images` to replace them, and the old ones are removed.
+- **`status`** is `active`, `pending_review`, `limited`, `rejected`, `expired`, `deleted` or `unknown`. `limited` means the account has used its free ads in that category, so the ad stays hidden until you buy a package on OLX (see [Status and limits](#status-and-limits)).
+- **Writes are paced** to look like a person: at least 60 s between writes, plus some random delay, and at most 20 per hour by default. They are never retried automatically, because a retry could post the same ad twice. Change the pace with `writeLimits`.
+
+## Product sync
+
+If your app has products, `olx.sync` keeps **one ad per product**. The first sync creates the ad. Later syncs edit the same ad, and only when something changed. Photos are re-uploaded only when they change.
+
+```ts
+const result = await olx.sync.upsert('SKU-1042', input); // → { action: 'created' | 'updated' | 'unchanged', record }
+await olx.sync.remove('SKU-1042');                        // deletes the ad and the link
+```
+
+Each product's link to its ad (the ad id, a fingerprint of what was sent, the status) lives in a **store**. The default is memory, which is lost on restart and on every serverless invocation. For anything real, pass a store backed by your database. It is four methods:
+
+```ts
+import { createOlxClient, type SyncStore, type SyncRecord } from 'olx-lebanon-sdk';
+
+const store: SyncStore = {
+  get: async (productId) => (await db.olxLink.findUnique({ where: { productId } }))?.record as SyncRecord | undefined,
+  set: async (record) => void (await db.olxLink.upsert({ where: { productId: record.productId }, create: { productId: record.productId, record }, update: { record } })),
+  delete: async (productId) => void (await db.olxLink.deleteMany({ where: { productId } })),
+  all: async () => (await db.olxLink.findMany()).map((r) => r.record as SyncRecord),
+};
+
+const olx = createOlxClient({ accessToken: process.env.OLX_ACCESS_TOKEN, store });
+```
+
+`JsonFileSyncStore` (a JSON file) is included for scripts and single-server setups.
+
+**Duplicate protection.** Right before a create is sent, the product is marked `creating`. If OLX's answer is lost (a timeout, a server error, a crash), the product is **parked** as `needs_reconcile` instead of being posted again. Check My ads, then call `olx.sync.link(productId, adId)` if the ad exists, or `olx.sync.forget(productId)` if it doesn't. If an ad was removed on OLX, the link becomes `gone` and the next sync tells you so instead of failing silently.
+
+## Catalog: categories, fields, locations
+
+OLX's catalog is public, so no token is needed. Use it to find ids, or to build forms and dropdowns in your app:
+
+```ts
+await olx.catalog.findCategories('laptop'); // [{ id: '175', name, path: ['Electronics & Home Appliances', 'Laptops, Tablets, Computers'] }]
+await olx.catalog.fields('175');            // [{ attribute: 'make', label: 'Brand', required: true, choices: [{ value: '3', label: 'Dell' }, …] }, …]
+olx.catalog.locations('hamra');             // [{ id: '47', name: 'Hamra', path: ['Beirut', 'Hamra'], postable: true }, …]
+```
+
+Categories and fields come live from OLX and are cached for an hour. Locations ship with the SDK (662 entries, Arabic names included), so `locations()` needs no network. You can also use the catalog without a client: `new OlxCatalog()`.
+
+**Your own names (optional).** If your products use your own words ("laptops", `brand: "Dell"`, `condition: "used"`), pass a catalog that translates them. Products then use `categoryKey` and `locationKey`:
+
+```ts
+const olx = createOlxClient({
+  accessToken: process.env.OLX_ACCESS_TOKEN,
+  catalog: {
+    categories: {
+      laptops: {
+        olxCategoryId: '175',
+        requiredAttributes: ['brand', 'type', 'condition'],
+        attributeMap: { brand: 'make', condition: 'new_used' },
+        valueMap: { brand: { Dell: '3', HP: '4', Lenovo: '6' }, type: { Laptop: '1' }, condition: { new: '1', used: '2' } },
+        defaults: { condition: 'new' },
+        priceLimits: { min: 5, max: 50000 },
+      },
+    },
+    locations: { shop: { olxLocationId: '47' } },
+  },
+});
+
+await olx.sync.upsert('SKU-1', { title, description, price, categoryKey: 'laptops', locationKey: 'shop', attributes: { brand: 'dell', type: 'Laptop' } });
+```
+
+`valueMap` matching ignores case. `requiredAttributes` and `priceLimits` are checked before anything is sent. `npx olx-lb catalog fields 175` prints a ready-made entry with every choice.
+
+## Next.js
+
+```ts
+// app/api/products/[id]/olx/route.ts
+import 'server-only';
+import { createOlxClient } from 'olx-lebanon-sdk';
+
+export const runtime = 'nodejs'; // not 'edge'
+
+const olx = createOlxClient({ accessToken: process.env.OLX_ACCESS_TOKEN, store: myDbStore });
+
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const product = await getProduct(id);
+  const result = await olx.sync.upsert(id, toAdInput(product));
+  return Response.json({ action: result.action, adId: result.record.adId, status: result.record.status });
+}
+```
+
+Tested with Next.js 15 (webpack) and 16 (Turbopack), with no extra configuration.
+
+- **Keep it on the server.** Only use the SDK in route handlers, server actions and server components. `import 'server-only'` makes Next.js fail the build if a client component imports it.
+- **Serverless hosts (Vercel and the like):**
+  - Pass a database-backed `store`. Memory is lost on every invocation.
+  - A create downloads and uploads its photos and waits for OLX, which takes a few seconds per ad. Raise the function's `maxDuration` if you post from a request.
+  - The write pacing is per process. In one invocation, the second write waits about a minute. For bulk listing, run a background job or the [REST service](#rest-service-php-python-net) on a server.
+
+## CLI
+
+Installed with the package as `olx-lb`. Run it with `npx olx-lb <command>`, or install it globally.
+
+| Command | What it does |
+| --- | --- |
+| `olx-lb init` | Sets up a folder for the CLI and REST service: `.env` with a new API key, an optional catalog file, and `.gitignore` entries |
+| `olx-lb login` | Opens a browser to sign in by hand, then saves the session to `.olx-session/` |
+| `olx-lb token` | Prints the access token for your app's environment variables |
+| `olx-lb check [--product file.json]` | Read-only check of the session, account, your newest ads, and how a product maps |
+| `olx-lb catalog categories [text]` | Category ids |
+| `olx-lb catalog fields <id>…` | A category's fields and choices, with a ready catalog entry |
+| `olx-lb catalog locations [text]` | Area ids |
+| `olx-lb test-post create\|edit\|delete` | Posts, edits and deletes one test ad, step by step |
+| `olx-lb serve` | Runs the REST service |
+| `olx-lb capture [shapes]` | For maintainers: records the OLX website to map a format change ([guide](docs/ENDPOINT-CAPTURE.md)) |
+
+Add `--json` to `catalog` for machine-readable output, and `--help` to any command for details. Exit codes: `0` ok, `1` failed, `2` wrong usage.
+
+## REST service (PHP, Python, .NET…)
+
+For store backends that aren't written in JavaScript, the SDK runs as a small local HTTP service. It queues jobs one at a time and paces writes, and the same duplicate protection applies.
+
+```bash
+npx olx-lb init      # .env with a random SERVER_API_KEY
+npx olx-lb login
+npx olx-lb serve     # http://127.0.0.1:8787
+```
+
+Run it from the folder that holds `.env`. Under Task Scheduler, NSSM or a Windows service, set the working directory ("Start in") to that folder. You can also start it from code with `startServer()` from `olx-lebanon-sdk/server`.
+
+### Endpoints
 
 Every route except `/health` requires the `X-Api-Key` header. The service binds to `127.0.0.1` by default, so keep it on the same machine or private network as your store.
 
@@ -138,18 +233,18 @@ Listing body:
   "description": "Sealed box, 1 year warranty",
   "price": 799,
   "currency": "USD",
-  "categoryKey": "mobile-phones",
-  "locationKey": "beirut",
-  "attributes": { "brand": "Apple", "condition": "new" },
+  "categoryId": "9",
+  "locationId": "47",
+  "attributes": { "make": "2", "new_used": "1" },
   "images": [{ "url": "https://your-store.example/images/iphone15.jpg" }]
 }
 ```
 
-`categoryKey` and `locationKey` are **your** names from `config/catalog.json`, which maps them to OLX's IDs, required attributes and field names.
+The body is the same `AdInput` as in the library: OLX ids (`categoryId`, `locationId`) and OLX field values, or your own names (`categoryKey`, `locationKey`) from `config/catalog.json`.
 
 Over REST, images are URL-only. By default an image URL must be https and must resolve to a public address. If you set `OLX_IMAGE_HOSTS`, images may only come from those hosts, and those hosts are trusted as-is (http and LAN addresses allowed). Redirects are re-checked on every hop, and downloads are capped at 10 MB.
 
-### Parked products (duplicate protection)
+#### Parked products (duplicate protection)
 
 Sometimes OLX may or may not have created an ad: a timeout, a 5xx, a redirect that isn't to a login page, or a response the adapter couldn't read. A failed *image* upload doesn't count, because no ad request has been sent at that point, so it simply fails and can be retried. In that case the product is **parked** with `syncState: "needs_reconcile"` instead of being posted again. If OLX says a linked ad no longer exists, the link is marked `"gone"`. Parked products show up under `needsAttention` in `/status`, and further syncs for them fail with `ReconcileRequiredError` until you resolve them:
 
@@ -166,14 +261,14 @@ POST /products/P-100/listing/resolve
 
 A product whose create is running right now is not listed under `needsAttention`. A resolve sent during a create waits for that create to finish and is then checked against its result.
 
-### Queue behaviour
+#### Queue behaviour
 
 - Jobs run one at a time.
 - A new request for a product that is already waiting replaces the waiting job.
 - At most 2,000 products can wait at once. Beyond that, `PUT`/`DELETE` answer `429 queue_full` with `Retry-After`.
 - On shutdown (Ctrl+C or a service stop), the running job is allowed to finish. Waiting jobs are marked `cancelled` and reported to the webhook, so resend them after a restart. Requests that arrive during shutdown get `503 shutting_down`.
 
-### Webhooks
+#### Webhooks
 
 If `WEBHOOK_URL` is set, every finished job is POSTed there, minus raw OLX responses. Each request is signed with `WEBHOOK_SECRET`, which must differ from `SERVER_API_KEY`. The headers are `X-Olx-Sdk-Timestamp` (unix seconds) and `X-Olx-Sdk-Signature: sha256=<hex HMAC of "timestamp.body">`. Redirects are refused, and plain http is only allowed for localhost. Verifying in PHP, where `OLX_WEBHOOK_SECRET` in your store's environment must hold the same value as `WEBHOOK_SECRET` here:
 
@@ -196,7 +291,7 @@ $job = json_decode($body, true);
 
 Under IIS or Apache, `getenv()` often can't see system environment variables. Set the secret where PHP can read it, for example in your app's config file, and keep the empty-secret check.
 
-### Calling it from PHP
+#### Calling it from PHP
 
 `OLX_SDK_API_KEY` in your store's environment must hold the same value as `SERVER_API_KEY` in this project's `.env`.
 
@@ -229,109 +324,73 @@ function olxSyncProduct(string $productId, array $listing): array
 }
 ```
 
-## Using the SDK directly
-
-The package is **ESM-only**. Use `import`, not `require()`, from a project with `"type": "module"` in its `package.json` (or from `.mjs` files). That also makes the top-level `await` below work.
-
-From another Node project, install it from a local clone or the git URL. The `prepare` script builds `dist/` on install:
-
-```bash
-npm install ../olx-lebanon-sdk
-# or: npm install git+https://github.com/Mohammad-AlBaker-Zaytoun/olx-lebanon-sdk.git
-```
-
-```ts
-import 'dotenv/config';
-import { OlxClient, loadConfig } from 'olx-lebanon-sdk';
-
-const client = OlxClient.fromConfig(loadConfig(), {
-  // adapter: myOlxAdapter,      // only if OLX changes its format
-  // syncStore: mySqlServerStore // keep product ↔ ad links in your own DB
-});
-
-const result = await client.sync.upsert('P-100', {
-  title: 'Lenovo ThinkPad T14',
-  description: '16GB RAM, 512GB SSD, 1 year warranty',
-  price: 899,
-  categoryKey: 'laptops', // a key from config/catalog.json
-  locationKey: 'beirut',
-  images: [{ path: './images/t14.jpg' }],
-});
-console.log(result.action); // "created" | "updated" | "unchanged"
-```
-
-`client.sync` also has `remove`, `link` and `forget`. Calls for the same product are serialised. Lower-level access goes through `client.listings.create / update / delete / get / listMine`.
-
-`fromConfig` logs to stderr at `LOG_LEVEL`. Pass `logger: silentLogger` to mute it, or your own `Logger`. Timeouts and limits can be tuned with `http: { timeoutMs, maxReadRetries }` and `images: { maxBytes, timeoutMs, totalTimeoutMs, maxRedirects }`.
-
-Use **one process per sync store**. Two processes sharing `data/sync-store.json` would overwrite each other's records. To use the SDK alongside the REST service, call the service, or give each process its own store.
-
-### Extension points
-
-| Interface | Default | Replace it to… |
-| --- | --- | --- |
-| `OlxAdapter` | `olxLebanonAdapter` | follow a change in OLX's request and response JSON |
-| `SyncStore` | `JsonFileSyncStore` | store product ↔ ad links in SQL Server, MySQL, etc. |
-| `SessionStore` | `FileSessionStore` | keep the session in a secrets manager |
-| `Logger` / `RequestLog` | JSON lines | plug in pino, winston, your log stack |
-| `ListingsPort` | `ListingsApi` | wrap or replace the OLX calls. `create` **must** await `hooks.beforeSend()` right before sending the ad, or crash-time duplicate protection is lost (a warning is logged if it isn't called) |
-
-## Catalog
-
-`config/catalog.json` maps **your** category and location keys to OLX's ids and fields. The OLX data you need is public, and `npm run catalog` reads it for you (no login, nothing posted):
-
-```bash
-npm run catalog -- categories phone      # category ids by name; use one WITHOUT subcategories
-npm run catalog -- fields 9 175          # the posting form's fields, their choices, and a starting entry
-npm run catalog -- locations metn        # location ids (areas inside a district)
-```
-
-For each category:
-
-- `olxCategoryId`: the category id (OLX's `externalID`).
-- `requiredAttributes`: the fields the form requires, in your store's names. Price and price type are filled from the product's `price` and `currency`.
-- `attributeMap`: renames your attribute names to OLX's, e.g. `{ "condition": "new_used" }`.
-- `valueMap`: translates your values to OLX's choice values, e.g. `{ "condition": { "new": "1", "used": "2" } }`. Matching ignores case and surrounding spaces. Unlisted values are sent as they are. `npm run catalog -- fields` prints a `valueMap` with every choice, keyed by OLX's labels.
-- `defaults`: values used when a product doesn't give one.
-- `priceLimits`: the category's USD price range from the posting form (`{ "min": 10, "max": 10000 }`). A product outside it fails before anything is sent.
-
-Locations use OLX's numeric location `id`, and must be an **area inside a district** (level 2 or below): OLX rejects a district such as "Beirut" on its own with "Please select a more specific location". Find yours with:
-
-```bash
-npm run catalog -- locations beirut     # every area whose path contains the text
-```
-
-The location search is the one the OLX posting form uses. It is read with the website's own read-only key, taken from your latest capture (or `OLX_SEARCH_AUTH`); the key is never printed or saved.
-
-Changing `OLX_CONTACT_*` doesn't change existing ads by itself, because contact details aren't part of a product's fingerprint. Sync with `?force=true` to push them to ads that are already up.
-
 ## Configuration
 
-All settings are environment variables. See [`.env.example`](.env.example) for the full list.
+`createOlxClient()` takes everything as options:
+
+| Option | Default | |
+| --- | --- | --- |
+| `accessToken` | — | From `olx-lb token`. Or pass `session` / `sessionStore` |
+| `store` | memory | Where `sync` keeps product ↔ ad links ([Product sync](#product-sync)) |
+| `catalog` | none | Your own names for categories and locations |
+| `contact` | your OLX profile | `{ name, phone, method }` shown to buyers. `method` defaults to `allow_chat_communication` |
+| `writeLimits` | 60 s, +15 s, 20/h | `{ minIntervalMs, jitterMs, maxPerHour }` |
+| `allowedImageHosts` | any public https host | Only download photos from these hosts (and trust them) |
+| `logger`, `requestLog` | silent | Plug in your logger (`debug`/`info`/`warn`/`error`) |
+| `fetch`, `imageFetch` | global `fetch` | For tests and proxies |
+| `endpoints`, `adapter` | built in | Only if OLX moves an endpoint or changes its format |
+
+The CLI and the REST service read the same settings from environment variables, usually a `.env` file created by `olx-lb init`:
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `OLX_MIN_WRITE_INTERVAL_MS` | `60000` | Minimum gap between writes |
-| `OLX_WRITE_JITTER_MS` | `15000` | Random extra delay added to each gap |
-| `OLX_MAX_WRITES_PER_HOUR` | `20` | Rolling hourly cap |
-| `OLX_IMAGE_HOSTS` | *(any public https host)* | Comma-separated hosts images may come from; listed hosts are trusted |
-| `OLX_EXTRA_HOSTS` | — | Non-OLX hosts the web app talks to; recorded by `capture`, watched by `login`. Set to `olx-dubizzle.com,olx-lb-prod.s3.eu-central-1.amazonaws.com` (as in `.env.example`) |
-| `OLX_ADAPTER` | `olx-lebanon` | `placeholder` only when you pass a custom adapter in code |
-| `OLX_CONTACT_NAME` / `OLX_CONTACT_PHONE` | *(your OLX profile)* | Contact shown on your ads |
-| `OLX_CONTACT_METHOD` | `allow_chat_communication` | OLX's contact option for your ads |
-| `OLX_CAPTURE_HEADERS` | — | Extra auth header names to save at login (defaults: `authorization`, `x-access-token`, `x-auth-token`, `x-csrf-token`) |
-| `SERVER_API_KEY` | — | Required for the REST service (16+ chars) |
-| `WEBHOOK_URL` / `WEBHOOK_SECRET` | — | Optional signed job notifications; the secret is required with the URL |
+| `OLX_SESSION_FILE` | `.olx-session/session.json` | Written by `olx-lb login`; a secret |
+| `OLX_CATALOG_FILE` | `config/catalog.json` | Optional |
+| `OLX_SYNC_STORE_FILE` | `data/sync-store.json` | The REST service's product ↔ ad links |
+| `OLX_CONTACT_NAME` / `_PHONE` / `_METHOD` | profile / profile / `allow_chat_communication` | Contact on your ads. Existing ads change on their next edit (or `?force=true`) |
+| `OLX_MIN_WRITE_INTERVAL_MS` / `OLX_WRITE_JITTER_MS` / `OLX_MAX_WRITES_PER_HOUR` | `60000` / `15000` / `20` | Write pacing |
+| `OLX_IMAGE_HOSTS` | any public https host | Comma-separated photo hosts |
+| `OLX_EXTRA_HOSTS` | set by `init` | Hosts the website uses, for `login` and `capture` |
+| `SERVER_HOST` / `SERVER_PORT` / `SERVER_API_KEY` | `127.0.0.1` / `8787` / — | REST service. The key is required (16+ characters) |
+| `WEBHOOK_URL` / `WEBHOOK_SECRET` | — | Optional signed job notifications |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+
+## Errors
+
+Every error is an `OlxSdkError`, with subclasses for the cases an app handles differently:
+
+| Error | Meaning | What to do |
+| --- | --- | --- |
+| `MappingError` | The input is invalid (`issues` lists why). Nothing was sent | Fix the input |
+| `AuthError` | No session, or OLX rejected the token (401/403) | `olx-lb login`, then update the token |
+| `OlxHttpError` | OLX refused the request (`status`, and `body` names the field). For example 422 "Please select a more specific location" | Fix the input |
+| `UncertainWriteError` | Sent, but the outcome is unknown. The ad may exist | Don't resend blindly; check My ads (`sync` parks the product for you) |
+| `ImageUploadError` | A photo failed before the ad was sent | Retry |
+| `ReconcileRequiredError` | `sync`: the product is parked or its ad is gone | `sync.link()` or `sync.forget()` |
+
+## Status and limits
+
+Verified against live OLX on 26 October 2026 with a test product:
+
+- **Create:** the photo is uploaded and the ad goes live with its photo.
+- **Edit with the same photos:** the price changes and nothing is re-uploaded.
+- **Edit with new photos:** the old photos are removed.
+- **Delete:** the ad is removed.
+
+OLX puts an edited ad back into review (`pending_review`) for a while, as it does for edits made by hand.
+
+- **Free-ad limits.** Each account gets a limited number of free ads per category. An ad posted beyond that is created but stays hidden (`limited`) until you buy a package on OLX. The status is read from My ads right after each write. It isn't refreshed later, for example after you buy a package; `olx.ads.status(id)` reads it again. The SDK never buys packages.
+- **OLX can change its website at any time.** If posting starts failing with new validation errors, `olx-lb capture` and [the capture guide](docs/ENDPOINT-CAPTURE.md) show what changed. Until a release follows the change, `endpoints` and `adapter` let you patch around it.
 
 ## Security notes
 
-- `.olx-session/` and the `.har` files in `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored. On Linux and macOS they are written owner-only (`0600`/`0700`). On Windows, file modes have no effect and the files inherit the folder's permissions, so keep the project in your own user folder, not a shared one. Never commit or share them.
+- Your **access token**, `.olx-session/` and the `.har` files in `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored. On Linux and macOS they are written owner-only (`0600`/`0700`). On Windows, file modes have no effect and the files inherit the folder's permissions, so keep the project in your own user folder, not a shared one. Never commit or share them.
 - The files made *from* a capture are meant to be shareable, but skim them first:
   - `.summary.txt`: methods, paths and status codes, with ids and tokens replaced by `{id}`.
   - `.shapes.txt`: bodies with names, phone numbers, emails, free text and tokens masked. The token appears only as its type, issuer and lifetime.
   - `.public/`: OLX's public category and location data.
 - Photos are only uploaded to OLX's own bucket and folder (`olx-lb-prod.s3.eu-central-1.amazonaws.com/temp/`). An upload URL anywhere else is refused, and no session ever goes with an upload.
-- `npm run catalog -- locations` uses the website's own read-only location-search key, taken from your latest capture (or `OLX_SEARCH_AUTH`). It is never printed or saved.
+- Locations ship with the SDK. Only the maintainer script `npm run update-locations` contacts OLX's location search, using the website's own read-only key from a capture (or `OLX_SEARCH_AUTH`). The key is never printed or saved.
 - `session.json` keeps only cookies and storage for OLX (and `OLX_EXTRA_HOSTS`). If you sign in with Google or Facebook, those sites' cookies are not saved.
 - Your session's cookies and auth headers are only sent to the OLX domain and its subdomains. An endpoint on another host gets them only if you set `sendSessionToForeignHost` for it. Redirects from OLX are never followed. Only https endpoints are called.
 - The request log (`logs/requests.jsonl`) records method, path, status and timing only. It contains no bodies, cookies, tokens or query strings, and neither do image error messages.
@@ -348,29 +407,17 @@ This tool exists so that a seller can manage **their own** listings without rety
 - Don't use it to scrape or redistribute other users' listings or personal data.
 - If OLX offers an official API or partner feed for Lebanon, prefer that.
 
-## Commands
-
-| Command | What it does |
-| --- | --- |
-| `npm run login` | Opens a browser to sign in to OLX by hand. Saves the session to `.olx-session/` |
-| `npm run catalog -- categories [text]` | OLX category ids. Public data, no login needed |
-| `npm run catalog -- fields <id> [...]` | A category's posting fields and choices, with a ready catalog entry (`valueMap`, `priceLimits`) |
-| `npm run catalog -- locations [text]` | Area ids for `olxLocationId` |
-| `npm run live-test -- check\|create\|edit\|delete` | Step-by-step check against live OLX with one test product (`captures/test-product.json`) |
-| `npm run capture` | Records you using the OLX website, starting signed in, into a `.har` (secret) and a `.summary.txt`. Use it when OLX changes something |
-| `npm run capture:shapes` | A redacted request/response report and public catalog data from the latest capture |
-| `npm run build` / `npm start` | Build, then run the REST service |
-| `npm run dev` | The REST service with reload on change |
-
 ## Development
 
 ```bash
+npm install
 npm run typecheck
 npm test
 npm run build
+npm run olx -- help      # the CLI from source
 ```
 
-[CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
+[CHANGELOG.md](CHANGELOG.md) lists what changed in each version. `npm run update-locations` refreshes the shipped locations (maintainers).
 
 ## License
 

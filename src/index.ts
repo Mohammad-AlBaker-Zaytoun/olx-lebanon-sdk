@@ -1,3 +1,19 @@
+/**
+ * olx-lebanon-sdk: post and manage your own OLX Lebanon ads from Node.js.
+ *
+ * Start with `createOlxClient()`. The REST service is in `olx-lebanon-sdk/server`, and the
+ * capture/HAR tools for mapping a changed OLX format are in `olx-lebanon-sdk/tools`.
+ */
+export { createOlxClient, DEFAULT_WRITE_LIMITS, OLX_LB_BASE_URL, type CreateOlxClientOptions } from './createClient.js';
+export { AdsApi, type AdInput, type AdPage } from './listings/AdsApi.js';
+export {
+  OlxCatalog,
+  type Category,
+  type CategoryField,
+  type FieldChoice,
+  type Location,
+  type OlxCatalogOptions,
+} from './catalog/OlxCatalog.js';
 export { OlxClient, type OlxClientOptions } from './client.js';
 export { loadConfig, type OlxConfig, type WriteLimits } from './config.js';
 export {
@@ -30,6 +46,7 @@ export {
 } from './listings/adapter.js';
 export {
   OLX_LB_DEFAULT_CONTACT_METHOD,
+  OLX_LB_ENDPOINTS,
   OLX_LB_IMAGE_BASE,
   OLX_LB_UPLOAD_HOST,
   OLX_LB_UPLOAD_PREFIX,
@@ -60,19 +77,9 @@ export {
   type Catalog,
   type MappedListing,
 } from './mapping/CatalogMapper.js';
-export { buildServer, type ServerDeps } from './server/app.js';
-export {
-  JobQueue,
-  QueueFullError,
-  QueueStoppedError,
-  type Job,
-  type JobHandler,
-  type JobQueueOptions,
-  type JobStatus,
-  type JobType,
-} from './server/queue.js';
 export {
   DEFAULT_CAPTURED_HEADERS,
+  loadPlaywright,
   preferCapturedHeader,
   scopeStorageState,
   SessionManager,
@@ -103,24 +110,3 @@ export {
   type SyncState,
   type SyncStore,
 } from './sync/SyncStore.js';
-export { createWebhookNotifier, signWebhook, stripRaw, type WebhookNotifier } from './server/webhook.js';
-export {
-  formatHarSummary,
-  formatHostActivity,
-  isSensitiveSegment,
-  summarizeHar,
-  tallyHosts,
-  type HarCall,
-  type HostActivity,
-} from './tools/har.js';
-export {
-  OLX_LB_CATALOG_API,
-  catalogEntry,
-  categoryLabel,
-  describeFields,
-  listCategories,
-  postableFields,
-  type OlxCategoryNode,
-  type OlxField,
-  type OlxFieldChoice,
-} from './tools/catalogFields.js';

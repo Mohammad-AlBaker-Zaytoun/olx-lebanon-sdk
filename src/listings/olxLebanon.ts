@@ -9,6 +9,7 @@
  * Ad ids are the 9-digit `externalID` (the one in the ad's public URL), not the internal `id`.
  */
 import { randomUUID } from 'node:crypto';
+import { parseEndpoints, type EndpointMap } from '../endpoints.js';
 import { OlxSdkError } from '../errors.js';
 import { normalizeStatus, type OlxAdapter } from './adapter.js';
 import type { SessionData } from '../session/storage.js';
@@ -18,6 +19,23 @@ type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Rec) : {});
 const str = (v: unknown): string | undefined =>
   typeof v === 'string' && v ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : undefined;
+
+const API = 'https://api-prod.olx-dubizzle.com/api/v1';
+
+/**
+ * OLX Lebanon's endpoints, built in. The ad API is on Dubizzle Group's backend, so those
+ * entries send the session there (the web app sends its bearer token there itself).
+ */
+export const OLX_LB_ENDPOINTS: EndpointMap = parseEndpoints({
+  createAd: { method: 'POST', path: `${API}/post-ad`, sendSessionToForeignHost: true },
+  updateAd: { method: 'PATCH', path: `${API}/edit-ad/{id}`, sendSessionToForeignHost: true },
+  deleteAd: { method: 'POST', path: `${API}/ads/{id}/delete`, sendSessionToForeignHost: true },
+  getAd: null,
+  listMyAds: { method: 'GET', path: `${API}/user/my-ads`, sendSessionToForeignHost: true },
+  currentUser: { method: 'GET', path: `${API}/user`, sendSessionToForeignHost: true },
+  signImageUpload: { method: 'GET', path: '/api/images/get-signed-url/' },
+  uploadImage: null,
+});
 
 /** The web app's default contact option (as captured). Override with OLX_CONTACT_METHOD. */
 export const OLX_LB_DEFAULT_CONTACT_METHOD = 'allow_chat_communication';
