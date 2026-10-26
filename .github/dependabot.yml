@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: weekly
     ignore:
-      # The types follow the oldest supported Node.js (engines), so newer APIs can't slip in.
+      # Kept on the 22.x types (the oldest vitest accepts); CI tests on Node 20 catch newer APIs.
       - dependency-name: '@types/node'
         update-types: [version-update:semver-major]
       # typescript-eslint's type-aware rules support TypeScript < 6.1 for now.
