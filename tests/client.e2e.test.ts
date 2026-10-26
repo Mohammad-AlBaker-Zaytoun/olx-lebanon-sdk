@@ -22,7 +22,7 @@ const product = {
   categoryKey: 'phones',
   locationKey: 'beirut',
   attributes: { brand: 'Google' },
-  images: [{ url: 'https://cdn.zaytoon.test/pixel.jpg' }],
+  images: [{ url: 'https://cdn.example-store.test/pixel.jpg' }],
 };
 
 function makeClient(sessionData = session) {
@@ -46,7 +46,7 @@ function makeClient(sessionData = session) {
     clock: fakeClock(),
     transport,
     imageFetch,
-    allowedImageHosts: ['zaytoon.test'],
+    allowedImageHosts: ['example-store.test'],
   });
   return { client, transport };
 }

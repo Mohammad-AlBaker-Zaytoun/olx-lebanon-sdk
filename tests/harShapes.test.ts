@@ -13,7 +13,7 @@ const jwt = `eyJ${b64({ alg: 'RS256' }).slice(3)}.${b64({
 })}.c2lnbmF0dXJl`;
 
 const PERSONAL = [
-  'Mohammad AlBaker',
+  'Test Seller',
   'mohammad@example.com',
   '+96170123456',
   '70123456',
@@ -48,9 +48,9 @@ const har: HarFull = {
               currency: 'USD',
               category: { externalID: '1453', slug: 'mobile-phones' },
               location: '0-1-37-12',
-              contactInfo: { name: 'Mohammad AlBaker', phone: '+96170123456' },
+              contactInfo: { name: 'Test Seller', phone: '+96170123456' },
               phoneNumber: 70123456,
-              userName: 'Mohammad AlBaker',
+              userName: 'Test Seller',
               password: 'SuperSecretPassw0rd',
               photos: [{ id: 117145974, url: 'https://images.example.com/thumbnails/117145974-800x600.webp' }],
               extraFields: { condition: 'used', storage: '256' },
@@ -86,7 +86,7 @@ const har: HarFull = {
       },
       {
         request: { method: 'GET', url: 'https://tracker.example/collect' },
-        response: { status: 200, content: { mimeType: 'application/json', text: '{"leak":"Mohammad AlBaker"}' } },
+        response: { status: 200, content: { mimeType: 'application/json', text: '{"leak":"Test Seller"}' } },
       },
     ],
   },

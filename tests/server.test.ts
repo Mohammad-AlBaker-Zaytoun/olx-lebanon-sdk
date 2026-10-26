@@ -11,7 +11,7 @@ const body = {
   price: 89,
   categoryKey: 'networking',
   locationKey: 'beirut',
-  images: [{ url: 'https://cdn.zaytoon.test/router.jpg' }],
+  images: [{ url: 'https://cdn.example-store.test/router.jpg' }],
 };
 
 let app: FastifyInstance;

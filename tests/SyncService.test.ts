@@ -14,7 +14,7 @@ const product: ListingInput = {
   categoryKey: 'networking',
   locationKey: 'beirut',
   attributes: { brand: 'TP-Link', condition: 'new' },
-  images: [{ url: 'https://cdn.zaytoon.test/router.jpg' }],
+  images: [{ url: 'https://cdn.example-store.test/router.jpg' }],
 };
 
 function fakeListings(): ListingsPort & { calls: string[] } {

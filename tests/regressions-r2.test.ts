@@ -25,7 +25,7 @@ const product: ListingInput = {
   categoryKey: 'phones',
   locationKey: 'beirut',
   attributes: { brand: 'Google' },
-  images: [{ url: 'https://cdn.zaytoon.test/p.jpg' }],
+  images: [{ url: 'https://cdn.example-store.test/p.jpg' }],
 };
 
 function client(transport: Transport) {
@@ -45,7 +45,7 @@ function client(transport: Transport) {
     clock: fakeClock(),
     transport,
     imageFetch: async () => new Response('x', { headers: { 'content-type': 'image/jpeg' } }),
-    allowedImageHosts: ['zaytoon.test'],
+    allowedImageHosts: ['example-store.test'],
   });
   return { c, syncStore };
 }

@@ -357,7 +357,7 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     price: 111,
     categoryKey: 'birds',
     locationKey: 'beirut',
-    images: [{ url: 'https://cdn.zaytoon.test/budgie.png' }],
+    images: [{ url: 'https://cdn.example-store.test/budgie.png' }],
   };
 
   interface SetupOptions {
@@ -388,7 +388,7 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
         if (userFailures-- > 0) return new Response('busy', { status: 503 });
         return jsonResponse({
           status: 'OK',
-          data: { externalID: userExternalId, name: { ar: 'متجر زيتون', en: 'Zaytoon Store' }, phoneNumber: '+96170000000' },
+          data: { externalID: userExternalId, name: { ar: 'متجر المثال', en: 'Example Store' }, phoneNumber: '+96170000000' },
         });
       }
       if (u.pathname === '/api/images/get-signed-url/') {
@@ -456,7 +456,7 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
       clock: fakeClock(),
       transport,
       imageFetch,
-      allowedImageHosts: ['zaytoon.test'],
+      allowedImageHosts: ['example-store.test'],
     });
     return {
       client,
@@ -587,7 +587,7 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     expect(name).toMatch(new RegExp(`^${USER}-[0-9a-f-]{36}$`));
     expect(JSON.parse(String(post!.body))).toEqual({
       extra_fields: { species: '2', price: 111, price_type: 'price' },
-      contact_person: { name: 'Zaytoon Store', mobile_phone_number: '+96170000000', contact_method: 'allow_chat_communication' },
+      contact_person: { name: 'Example Store', mobile_phone_number: '+96170000000', contact_method: 'allow_chat_communication' },
       area: 0,
       user_external_id: USER,
       state: 'pending',
@@ -629,7 +629,7 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
   it('an edit with new photos removes the old ones (deleted_photos) instead of piling them up', async () => {
     const { client, calls } = setup();
     await client.sync.upsert('P-1', product);
-    await client.sync.upsert('P-1', { ...product, price: 98, images: [{ url: 'https://cdn.zaytoon.test/other.png' }] });
+    await client.sync.upsert('P-1', { ...product, price: 98, images: [{ url: 'https://cdn.example-store.test/other.png' }] });
     const patch = JSON.parse(String(calls.filter((c) => c.method === 'PATCH').at(-1)!.body)) as Record<string, unknown>;
     const name = new URL(calls.filter((c) => c.url.includes('get-signed-url')).at(-1)!.url).searchParams.get('imageName')!;
     expect(patch).toMatchObject({
@@ -668,7 +668,7 @@ describe('OLX Lebanon end to end (mocked OLX, shipped endpoints file)', () => {
     };
     expect(edit).toMatchObject({ images: [], order_photos: [] });
 
-    await client.sync.upsert('P-1', { ...product, price: 98, images: [{ url: 'https://cdn.zaytoon.test/other.png' }] });
+    await client.sync.upsert('P-1', { ...product, price: 98, images: [{ url: 'https://cdn.example-store.test/other.png' }] });
     expect(calls.filter((c) => c.method === 'PUT').length).toBe(uploadsAfterCreate + 1);
     expect((await client.syncStore.get('P-1'))?.imagesHash).toBeDefined();
   });
