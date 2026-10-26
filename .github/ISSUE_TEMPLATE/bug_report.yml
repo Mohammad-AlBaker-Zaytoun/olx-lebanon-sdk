@@ -1,0 +1,53 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste** your access token, `.env`, anything from `.olx-session/`, or `.har` files. They give full access to your OLX account.
+        Security problems: use **Security → Report a vulnerability** instead of an issue.
+  - type: input
+    id: version
+    attributes:
+      label: SDK version
+      description: '`npx olx-lb --version`'
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version and OS
+      placeholder: Node 22.12, Windows 11
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: How do you use it?
+      options:
+        - Library (Node.js)
+        - Library (Next.js)
+        - CLI (olx-lb)
+        - REST service
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Code or steps to reproduce
+      description: The smallest code or command that shows the problem. Replace real ids and URLs if you prefer.
+      render: ts
+  - type: textarea
+    id: error
+    attributes:
+      label: Error
+      description: The error's `code`, `message` and `details` (for example from `toErrorInfo(err)` or the REST response).
+      render: json

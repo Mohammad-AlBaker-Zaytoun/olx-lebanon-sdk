@@ -34,6 +34,9 @@ function anchors(markdown: string): Set<string> {
 const files = [
   join(ROOT, 'README.md'),
   join(ROOT, 'CHANGELOG.md'),
+  join(ROOT, 'CONTRIBUTING.md'),
+  join(ROOT, 'SECURITY.md'),
+  join(ROOT, 'CODE_OF_CONDUCT.md'),
   ...markdownFiles(join(ROOT, 'docs')),
   ...markdownFiles(join(ROOT, 'examples')),
 ];

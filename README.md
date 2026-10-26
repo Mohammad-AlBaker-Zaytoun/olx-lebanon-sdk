@@ -131,7 +131,7 @@ Verified against live OLX Lebanon on 26 October 2026: creating an ad with a phot
 - The request log records method, path, status and timing only. Logs never contain tokens, cookies, request bodies or query strings; a failed job's log line includes OLX's validation message, which is what you need to fix the product.
 - The REST service binds to `127.0.0.1`, checks its API key in constant time, accepts only URL photos, and never returns raw OLX responses or internal error details.
 
-Found a security problem? Please report it privately to the maintainer rather than in a public issue.
+Found a security problem? Please report it privately; see [SECURITY.md](SECURITY.md).
 
 ## Responsible use
 
@@ -154,7 +154,7 @@ npm run build
 npm run olx -- help  # the CLI from source
 ```
 
-[CHANGELOG.md](CHANGELOG.md) lists what changed in each version. `npm run update-locations` refreshes the shipped locations, and `npm run openapi` regenerates `openapi.json` (maintainers).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose a change. [CHANGELOG.md](CHANGELOG.md) lists what changed in each version. `npm run update-locations` refreshes the shipped locations, and `npm run openapi` regenerates `openapi.json` (maintainers).
 
 ## License
 
