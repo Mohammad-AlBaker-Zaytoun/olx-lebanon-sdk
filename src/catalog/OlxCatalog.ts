@@ -5,6 +5,7 @@
  */
 import { OlxSdkError } from '../errors.js';
 import { OLX_LB_LOCATION_ROWS, OLX_LB_LOCATIONS_TAKEN_AT } from '../data/locations.js';
+import { parseDeliveryConfig, parseExchangeRate, type DeliveryConfig, type ExchangeRate } from '../listings/olxResponses.js';
 import { OLX_LB_CATALOG_API, postableFields, type OlxCategoryNode, type OlxField } from '../tools/catalogFields.js';
 
 export interface Category {
@@ -176,6 +177,16 @@ export class OlxCatalog {
 
   /** When the shipped location snapshot was taken. */
   readonly locationsTakenAt = OLX_LB_LOCATIONS_TAKEN_AT;
+
+  /** OLX's current USD → LBP rate, as the website uses it (public; not cached). */
+  async exchangeRate(): Promise<ExchangeRate> {
+    return parseExchangeRate(await this.get<unknown>('/exchange-rate'));
+  }
+
+  /** OLX delivery's limits for sellers: maximum price and weight, days to ship (public). */
+  async deliveryConfig(): Promise<DeliveryConfig> {
+    return parseDeliveryConfig(await this.get<unknown>('/delivery-config'));
+  }
 }
 
 function choicesOf(f: OlxField): FieldChoice[] {

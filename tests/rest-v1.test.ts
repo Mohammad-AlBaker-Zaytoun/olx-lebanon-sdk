@@ -286,3 +286,73 @@ describe('location in the listing body', () => {
     expect(both.json()).toMatchObject({ error: { details: { issues: [expect.objectContaining({ path: 'locationId' })] } } });
   });
 });
+
+describe('ad lifecycle over REST', () => {
+  function lifecycleServer() {
+    const jobs: Array<{ type: string; productId: string; payload: unknown }> = [];
+    const queue = new JobQueue(async (job, payload) => {
+      jobs.push({ type: job.type, productId: job.productId, payload });
+      return {};
+    });
+    const store = new MemorySyncStore();
+    const metrics = vi.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, { views: 7, leads: 2 }])));
+    const app = buildServer({
+      apiKey: KEY,
+      queue,
+      store,
+      resolve: { link: vi.fn(), forget: vi.fn() },
+      status: async () => ({}),
+      metrics: metrics as never,
+    });
+    return { app, queue, store, jobs, metrics };
+  }
+
+  it('deactivate, activate, sold and refresh are queued jobs', async () => {
+    const { app, queue, jobs } = lifecycleServer();
+    for (const [url, payload] of [
+      ['/v1/products/P1/listing/deactivate', undefined],
+      ['/v1/products/P2/listing/activate', undefined],
+      ['/v1/products/P3/listing/sold', { soldOn: 'elsewhere' }],
+      ['/v1/listings/refresh', undefined],
+    ] as const) {
+      const res = await app.inject({ method: 'POST', url, headers: auth, ...(payload ? { payload } : {}) });
+      expect(res.statusCode, url).toBe(202);
+    }
+    await queue.idle();
+    expect(jobs).toEqual([
+      { type: 'deactivate', productId: 'P1', payload: undefined },
+      { type: 'activate', productId: 'P2', payload: undefined },
+      { type: 'mark_sold', productId: 'P3', payload: { soldOn: 'elsewhere' } },
+      { type: 'refresh', productId: '*', payload: undefined },
+    ]);
+  });
+
+  it('sold needs soldOn: olx or elsewhere', async () => {
+    const { app } = lifecycleServer();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/products/P1/listing/sold',
+      headers: auth,
+      payload: { soldOn: 'somewhere' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: { code: 'bad_request', details: { issues: [expect.objectContaining({ path: 'soldOn' })] } },
+    });
+  });
+
+  it("metrics for a product's ad; 404 when nothing is linked", async () => {
+    const { app, store } = lifecycleServer();
+    expect((await app.inject({ method: 'GET', url: '/v1/products/P1/listing/metrics', headers: auth })).statusCode).toBe(404);
+    await store.set({
+      productId: 'P1',
+      adId: '117000001',
+      status: 'active',
+      contentHash: 'h',
+      createdAt: 'x',
+      lastSyncedAt: 'x',
+    });
+    const res = await app.inject({ method: 'GET', url: '/v1/products/P1/listing/metrics', headers: auth });
+    expect(res.json()).toEqual({ productId: 'P1', adId: '117000001', metrics: { views: 7, leads: 2 } });
+  });
+});

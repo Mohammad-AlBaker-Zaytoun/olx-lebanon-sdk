@@ -33,7 +33,7 @@ describe('JobQueue', () => {
   it('coalesces a waiting job for the same product into the newest request', async () => {
     const seen: Array<[string, number | undefined]> = [];
     const queue = new JobQueue(async (job, payload) => {
-      seen.push([job.productId, payload?.price]);
+      seen.push([job.productId, payload && 'price' in payload ? payload.price : undefined]);
     });
     queue.enqueue('upsert', 'A', listing); // starts running immediately
     const b1 = queue.enqueue('upsert', 'B', { ...listing, price: 10 });

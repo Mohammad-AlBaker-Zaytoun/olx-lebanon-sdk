@@ -37,11 +37,22 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Runnin
 
   const queue = new JobQueue(
     async (job, payload) => {
-      if (job.type === 'upsert') {
-        if (!payload) throw new Error('upsert job without payload');
-        return client.sync.upsert(job.productId, payload, { force: job.force });
+      switch (job.type) {
+        case 'upsert':
+          if (!payload || !('title' in payload)) throw new Error('upsert job without a listing');
+          return client.sync.upsert(job.productId, payload, { force: job.force });
+        case 'remove':
+          return client.sync.remove(job.productId);
+        case 'deactivate':
+          return { record: await client.sync.deactivate(job.productId) };
+        case 'activate':
+          return client.sync.activate(job.productId);
+        case 'mark_sold':
+          if (!payload || !('soldOn' in payload)) throw new Error('mark_sold job without soldOn');
+          return { record: await client.sync.markSold(job.productId, payload.soldOn) };
+        case 'refresh':
+          return client.sync.refresh();
       }
-      return client.sync.remove(job.productId);
     },
     { logger, onSettled: webhook ? (job) => webhook.send(job) : undefined },
   );
@@ -51,6 +62,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Runnin
     logger,
     queue,
     store: client.syncStore,
+    metrics: (adIds) => client.ads.metrics(adIds),
     resolve: {
       link: (productId, adId, o) => client.sync.link(productId, adId, o),
       forget: (productId, o) => client.sync.forget(productId, o),

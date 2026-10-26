@@ -35,7 +35,7 @@ const received: Array<{ productId: string; price: unknown }> = [];
 beforeAll(async () => {
   const store = new MemorySyncStore();
   const queue = new JobQueue(async (job, payload) => {
-    received.push({ productId: job.productId, price: payload?.price });
+    received.push({ productId: job.productId, price: payload && 'price' in payload ? payload.price : undefined });
     const record: SyncRecord = {
       productId: job.productId,
       adId: '117146151',

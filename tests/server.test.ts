@@ -19,7 +19,7 @@ let app: FastifyInstance;
 function setup() {
   const handled: string[] = [];
   const queue = new JobQueue(async (job, payload) => {
-    handled.push(`${job.type}:${job.productId}:${payload?.currency ?? '-'}`);
+    handled.push(`${job.type}:${job.productId}:${(payload && 'currency' in payload ? payload.currency : undefined) ?? '-'}`);
     return { ok: true };
   });
   const store = new MemorySyncStore();

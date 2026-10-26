@@ -35,7 +35,21 @@ export interface ListingInput {
  * `limited`: the ad exists but OLX keeps it hidden, usually because the account has used up
  * its free ads in that category and the ad needs a paid package to go live.
  */
-export type AdStatus = 'active' | 'pending_review' | 'limited' | 'rejected' | 'expired' | 'deleted' | 'unknown';
+export type AdStatus =
+  | 'active'
+  | 'pending_review'
+  | 'limited'
+  | 'rejected'
+  | 'expired'
+  /** Taken offline by you (`ads.deactivate`); `ads.republish` brings it back. */
+  | 'inactive'
+  /** Marked as sold (`ads.markSold`); it can only be deleted after that. */
+  | 'sold'
+  | 'deleted'
+  | 'unknown';
+
+/** Something you can do with an ad in its current status, as the OLX website offers it. */
+export type AdAction = 'edit' | 'deactivate' | 'activate' | 'mark_sold' | 'republish' | 'delete' | 'rejection_reason';
 
 /** A photo uploaded to OLX, as the ad body refers to it. */
 export interface UploadedImage {
@@ -71,9 +85,52 @@ export interface OlxAd {
   status: AdStatus;
   url?: string;
   title?: string;
+  /** OLX's own state, finer than `status`: e.g. `featured`, `moderation_soft_reject`, `disabled`. */
+  state?: string;
+  /** A paid boost on the ad. `pending` until OLX starts it. */
+  promotion?: { type: 'featured' | 'elite'; pending: boolean };
+  /** Soft: fix and edit the ad. Hard: it can't be posted (see `ads.rejectionReason`). */
+  rejection?: 'soft' | 'hard';
+  /** When the ad expires (ISO 8601), if OLX says. */
+  expiresAt?: string;
   /** The untouched OLX response, for anything the adapter does not normalise yet. */
   raw: unknown;
 }
+
+/** Views and leads for one ad, from OLX's ads analytics. */
+export interface AdMetrics {
+  /** Times the ad appeared in search results. */
+  searchViews: number;
+  /** Times the ad page was opened. */
+  views: number;
+  storyViews: number;
+  reelViews: number;
+  /** Buyers who revealed the phone number. */
+  phoneViews: number;
+  chatLeads: number;
+  whatsAppLeads: number;
+  smsLeads: number;
+  applyLeads: number;
+  favorites: number;
+  /** phoneViews + chatLeads + whatsAppLeads + smsLeads + applyLeads. */
+  leads: number;
+}
+
+/** Why OLX's review refused an ad, in English and Arabic. */
+export interface RejectionReason {
+  message: string;
+  messageAr?: string;
+  rules: string[];
+}
+
+/**
+ * The outcome of `ads.activate` on a `limited` ad: `activated` (a free slot was used),
+ * `needs_package` (no free slot left; a package is needed on OLX) or `not_limited` (nothing to do).
+ */
+export type ActivateResult = 'activated' | 'needs_package' | 'not_limited';
+
+/** Where a sold item was sold. */
+export type SoldOn = 'olx' | 'elsewhere';
 
 /**
  * Schema for listings arriving over the REST API. Images are URL-only there, so a

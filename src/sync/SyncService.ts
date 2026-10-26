@@ -9,13 +9,28 @@ import {
   UncertainWriteError,
 } from '../errors.js';
 import type { ListingsPort } from '../listings/ListingsApi.js';
-import type { AdStatus, ImageSource, ListingInput, OlxAd } from '../listings/types.js';
+import type { ActivateResult, AdStatus, ImageSource, ListingInput, OlxAd, SoldOn } from '../listings/types.js';
 import { silentLogger, type Logger } from '../logger.js';
 import type { MappedListing } from '../mapping/CatalogMapper.js';
 import type { SyncRecord, SyncStore } from './SyncStore.js';
 
+/**
+ * `republished`: the ad was deactivated or expired, so it was brought back with the current
+ * content (OLX's republish), instead of edited.
+ */
 export type UpsertResult =
-  { action: 'created' | 'updated'; record: SyncRecord; ad: OlxAd } | { action: 'unchanged'; record: SyncRecord };
+  { action: 'created' | 'updated' | 'republished'; record: SyncRecord; ad: OlxAd } | { action: 'unchanged'; record: SyncRecord };
+
+/** What `sync.refresh` found: links whose status changed, and products whose ad isn't in My ads. */
+export interface RefreshResult {
+  updated: SyncRecord[];
+  /** Product ids whose ad wasn't found in the pages searched (deleted on OLX, or too old to reach). */
+  missing: string[];
+  checked: number;
+}
+
+/** Statuses an upsert brings back with a republish instead of an edit. */
+const REPUBLISHABLE = new Set(['inactive', 'expired']);
 
 export type RemoveResult = { action: 'deleted'; adId: string; alreadyGone?: boolean } | { action: 'not_found' };
 
@@ -68,8 +83,10 @@ export function hashImages(images: ImageSource[] | undefined): string {
  * call in the same operation (the account, the photo lookup, a photo upload) says nothing about
  * the ad, and treating it as "gone" would invite posting a duplicate of a live ad.
  */
-const isGone = (err: unknown, endpoint: 'updateAd' | 'deleteAd'): boolean =>
-  err instanceof OlxHttpError && err.endpoint === endpoint && (err.status === 404 || err.status === 410);
+const isGone = (
+  err: unknown,
+  endpoint: 'updateAd' | 'republishAd' | 'deleteAd' | 'deactivateAd' | 'activateAd' | 'markAdSold',
+): boolean => err instanceof OlxHttpError && err.endpoint === endpoint && (err.status === 404 || err.status === 410);
 
 export interface SyncServiceDeps {
   listings: ListingsPort;
@@ -106,6 +123,125 @@ export class SyncService {
 
   remove(productId: string): Promise<RemoveResult> {
     return this.withLock(productId, () => this.doRemove(productId));
+  }
+
+  /**
+   * Takes the product's ad offline without deleting it (out of stock, say). The link stays, and
+   * the next `upsert` brings the ad back with a republish.
+   */
+  deactivate(productId: string): Promise<SyncRecord> {
+    return this.withLock(productId, async () => {
+      const existing = await this.healthyLink(productId);
+      const deactivate = this.capability('deactivate');
+      await this.onAd(existing, 'deactivateAd', () => deactivate(existing.adId));
+      return this.saveStatus(existing, 'inactive', 'Deactivated OLX ad');
+    });
+  }
+
+  /**
+   * Puts the product's `limited` ad live with a free slot, if one is left: `activated`,
+   * `needs_package` or `not_limited`. The stored status follows OLX's answer.
+   */
+  activate(productId: string): Promise<{ result: ActivateResult; record: SyncRecord }> {
+    return this.withLock(productId, async () => {
+      const existing = await this.healthyLink(productId);
+      const activate = this.capability('activate');
+      const result = await this.onAd(existing, 'activateAd', () => activate(existing.adId));
+      const status =
+        result === 'activated' ? ((await this.d.listings.lookupStatus?.(existing.adId)) ?? 'active') : existing.status;
+      return { result, record: await this.saveStatus(existing, status, 'Activated OLX ad') };
+    });
+  }
+
+  /**
+   * Marks the product's ad as sold, on OLX or elsewhere. A sold ad can't be edited: to sell the
+   * product again, `forget` the link (a new ad is posted on the next upsert) or `remove` it.
+   */
+  markSold(productId: string, soldOn: SoldOn): Promise<SyncRecord> {
+    return this.withLock(productId, async () => {
+      const existing = await this.healthyLink(productId);
+      const markSold = this.capability('markSold');
+      await this.onAd(existing, 'markAdSold', () => markSold(existing.adId, soldOn));
+      return this.saveStatus(existing, 'sold', 'Marked OLX ad as sold');
+    });
+  }
+
+  /**
+   * Re-reads every linked ad's status from "My ads" (reads only, not paced) and stores the ones
+   * that changed: ads that expired, got rejected, went live after review… `missing` lists products
+   * whose ad wasn't found in the pages searched.
+   */
+  async refresh(opts: { maxPages?: number } = {}): Promise<RefreshResult> {
+    const listPage = this.capability('listPage');
+    const records = (await this.d.store.all()).filter((r) => r.adId && !r.syncState);
+    const byAd = new Map(records.map((r) => [r.adId, r]));
+    const seen = new Set<string>();
+    const updated: SyncRecord[] = [];
+    const maxPages = opts.maxPages ?? 50;
+    for (let page = 1; page <= maxPages && seen.size < byAd.size; page++) {
+      const { ads, hasMore } = await listPage(page, 20);
+      for (const ad of ads) {
+        const record = byAd.get(ad.id);
+        if (!record || seen.has(ad.id)) continue;
+        seen.add(ad.id);
+        if (ad.status === 'unknown' || ad.status === record.status) continue;
+        const saved = await this.withLock(record.productId, async () => {
+          const current = await this.d.store.get(record.productId);
+          // Skip a link that changed while we were reading (a sync moved or removed it).
+          if (!current || current.adId !== ad.id || current.syncState) return undefined;
+          return this.saveStatus(current, ad.status, 'Refreshed OLX ad status');
+        });
+        if (saved) updated.push(saved);
+      }
+      if (!hasMore) break;
+    }
+    const missing = records.filter((r) => !seen.has(r.adId)).map((r) => r.productId);
+    return { updated, missing, checked: seen.size };
+  }
+
+  private async healthyLink(productId: string): Promise<SyncRecord> {
+    const existing = await this.d.store.get(productId);
+    if (!existing) throw new OlxSdkError(`Product "${productId}" has no OLX ad linked`);
+    if (existing.syncState) {
+      throw new ReconcileRequiredError(productId, existing.syncState === 'gone' ? 'ad_gone' : 'uncertain_create');
+    }
+    return existing;
+  }
+
+  private capability<K extends 'deactivate' | 'activate' | 'markSold' | 'listPage'>(name: K): NonNullable<ListingsPort[K]> {
+    const fn = this.d.listings[name];
+    if (!fn) throw new OlxSdkError(`This ListingsPort has no ${name}()`);
+    return fn.bind(this.d.listings) as NonNullable<ListingsPort[K]>;
+  }
+
+  /** Runs a write on the product's ad; a 404/410 from that request marks the link gone. */
+  private async onAd<T>(
+    existing: SyncRecord,
+    endpoint: 'deactivateAd' | 'activateAd' | 'markAdSold',
+    write: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await write();
+    } catch (err) {
+      if (isGone(err, endpoint)) {
+        await this.d.store.set({
+          ...existing,
+          status: 'deleted',
+          syncState: 'gone',
+          lastError: (err as Error).message,
+          lastSyncedAt: this.now().toISOString(),
+        });
+        throw new ReconcileRequiredError(existing.productId, 'ad_gone');
+      }
+      throw err;
+    }
+  }
+
+  private async saveStatus(existing: SyncRecord, status: AdStatus, message: string): Promise<SyncRecord> {
+    const record: SyncRecord = { ...existing, status, lastSyncedAt: this.now().toISOString(), lastError: undefined };
+    await this.d.store.set(record);
+    this.logger.info(message, { productId: existing.productId, adId: existing.adId, status });
+    return record;
   }
 
   /** True while a create for this product is in progress in this process (its marker is expected). */
@@ -182,7 +318,9 @@ export class SyncService {
   forget(productId: string, opts: { force?: boolean } = {}): Promise<boolean> {
     return this.withLock(productId, async () => {
       const existing = await this.d.store.get(productId);
-      if (existing && !existing.syncState && !opts.force) {
+      // A sold or deleted ad isn't live, so forgetting it can't leave a live ad unmanaged.
+      const live = existing && !existing.syncState && existing.status !== 'sold' && existing.status !== 'deleted';
+      if (live && !opts.force) {
         throw new ForgetConflictError(productId, existing.adId);
       }
       await this.d.store.delete(productId);
@@ -202,7 +340,9 @@ export class SyncService {
     if (existing?.syncState) {
       throw new ReconcileRequiredError(productId, existing.syncState === 'gone' ? 'ad_gone' : 'uncertain_create');
     }
-    if (existing && !opts.force && existing.contentHash === contentHash) {
+    if (existing?.status === 'sold') throw new ReconcileRequiredError(productId, 'ad_sold');
+    const republish = existing !== undefined && REPUBLISHABLE.has(existing.status);
+    if (existing && !opts.force && !republish && existing.contentHash === contentHash) {
       this.logger.debug('Listing unchanged; skipping', { productId, adId: existing.adId });
       return { action: 'unchanged', record: existing };
     }
@@ -213,9 +353,10 @@ export class SyncService {
       ad = await this.d.listings.update(existing.adId, input, {
         // `force` re-sends everything, photos included (e.g. a new picture behind the same URL).
         photosUnchanged: !opts.force && existing.imagesHash !== undefined && existing.imagesHash === hashImages(input.images),
+        ...(republish ? { republish: true } : {}),
       });
     } catch (err) {
-      if (isGone(err, 'updateAd')) {
+      if (isGone(err, republish ? 'republishAd' : 'updateAd')) {
         await this.d.store.set({
           ...existing,
           status: 'deleted',
@@ -236,9 +377,10 @@ export class SyncService {
       lastSyncedAt: this.now().toISOString(),
       lastError: undefined,
     };
+    if (republish && ad.status === 'unknown') record.status = 'unknown'; // no longer inactive/expired; looked up below
     await this.d.store.set(record);
-    this.logger.info('Updated OLX ad', { productId, adId: existing.adId });
-    return { action: 'updated', record: await this.withLookedUpStatus(record, ad), ad };
+    this.logger.info(republish ? 'Republished OLX ad' : 'Updated OLX ad', { productId, adId: existing.adId });
+    return { action: republish ? 'republished' : 'updated', record: await this.withLookedUpStatus(record, ad), ad };
   }
 
   private async create(productId: string, input: ListingInput, contentHash: string): Promise<UpsertResult> {

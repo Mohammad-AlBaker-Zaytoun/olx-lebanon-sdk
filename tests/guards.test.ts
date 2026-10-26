@@ -415,7 +415,7 @@ describe('guards: queue', () => {
     let release!: () => void;
     const seen: Array<number | undefined> = [];
     const q = new JobQueue(async (_job, payload) => {
-      seen.push(payload?.price);
+      seen.push(payload && 'price' in payload ? payload.price : undefined);
       if (seen.length === 1) await new Promise<void>((r) => (release = r));
     });
     const first = q.enqueue('upsert', 'P', { ...product, price: 1 });

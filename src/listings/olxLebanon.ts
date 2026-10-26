@@ -35,6 +35,21 @@ export const OLX_LB_ENDPOINTS: EndpointMap = parseEndpoints({
   currentUser: { method: 'GET', path: `${API}/user`, sendSessionToForeignHost: true },
   signImageUpload: { method: 'GET', path: '/api/images/get-signed-url/' },
   uploadImage: null,
+  deactivateAd: { method: 'POST', path: `${API}/ads/{id}/deactivate`, sendSessionToForeignHost: true },
+  activateAd: { method: 'POST', path: `${API}/ads/{id}/activate`, sendSessionToForeignHost: true },
+  markAdSold: { method: 'POST', path: `${API}/ads/{id}/mark-as-sold`, sendSessionToForeignHost: true },
+  republishAd: { method: 'PATCH', path: `${API}/republish-ad/{id}`, sendSessionToForeignHost: true },
+  adRejectionReason: { method: 'GET', path: `${API}/ads/{id}/rejection-reason`, sendSessionToForeignHost: true },
+  adMetrics: { method: 'GET', path: `${API}/user/ads-analytics`, sendSessionToForeignHost: true },
+  wallet: { method: 'GET', path: `${API}/user/wallet`, sendSessionToForeignHost: true },
+  postingLimitOffers: { method: 'GET', path: `${API}/package-offers/posting/limit/{categoryId}`, sendSessionToForeignHost: true },
+  sellingOrders: { method: 'GET', path: `${API}/selling-orders`, sendSessionToForeignHost: true },
+  sellingOrdersByAd: { method: 'GET', path: `${API}/selling-orders/{id}`, sendSessionToForeignHost: true },
+  updateDeliveryOrder: {
+    method: 'POST',
+    path: `${API}/delivery-orders/{id}/update-status/{action}`,
+    sendSessionToForeignHost: true,
+  },
 });
 
 /** The web app's default contact option (as captured). Override with OLX_CONTACT_METHOD. */
@@ -101,14 +116,51 @@ export interface OlxLebanonAdapterOptions {
   uploadPathPrefix?: string;
 }
 
+/**
+ * OLX Lebanon's ad states (the web app's `virtualState`), as the website's own code lists them,
+ * mapped to the SDK's status plus any boost or rejection detail.
+ */
+const OLX_LB_STATES: Record<string, Pick<OlxAd, 'status' | 'promotion' | 'rejection'>> = {
+  active: { status: 'active' },
+  featured: { status: 'active', promotion: { type: 'featured', pending: false } },
+  elite: { status: 'active', promotion: { type: 'elite', pending: false } },
+  featured_pending: { status: 'active', promotion: { type: 'featured', pending: true } },
+  elite_pending: { status: 'active', promotion: { type: 'elite', pending: true } },
+  limited: { status: 'limited' },
+  expired: { status: 'expired' },
+  disabled: { status: 'inactive' },
+  sold: { status: 'sold' },
+  moderation_pending: { status: 'pending_review' },
+  moderation_soft_reject: { status: 'rejected', rejection: 'soft' },
+  moderation_hard_reject: { status: 'rejected', rejection: 'hard' },
+  moderation_critical_reject: { status: 'rejected', rejection: 'hard' },
+};
+
+/** Reads an ad's state into status, promotion and rejection. Unknown states fall back to a best guess. */
+export function olxLebanonState(state: string | undefined): Pick<OlxAd, 'status' | 'promotion' | 'rejection'> {
+  const known = state ? OLX_LB_STATES[state.toLowerCase()] : undefined;
+  return known ? { ...known } : { status: normalizeStatus(state) };
+}
+
+/** OLX sends dates as unix seconds (sometimes with a fraction) or ISO strings. */
+function isoDate(v: unknown): string | undefined {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return new Date(v < 1e12 ? v * 1000 : v).toISOString();
+  if (typeof v === 'string' && !Number.isNaN(Date.parse(v))) return new Date(v).toISOString();
+  return undefined;
+}
+
 /** Turns a raw ad from any of OLX's responses into an `OlxAd`. */
 function toAd(o: Rec, raw: unknown): OlxAd {
   const id = str(o.externalID) ?? str(o.external_id);
   if (!id) throw new OlxSdkError('No externalID in the OLX ad data; the response format may have changed');
+  const state = str(o.virtualState) ?? str(o.state);
+  const expiresAt = isoDate(o.expiresAt);
   return {
     id,
-    status: normalizeStatus(str(o.virtualState) ?? str(o.state)),
+    ...olxLebanonState(state),
     title: str(o.title),
+    ...(state ? { state } : {}),
+    ...(expiresAt ? { expiresAt } : {}),
     raw,
   };
 }
@@ -206,7 +258,8 @@ export function createOlxLebanonAdapter(opts: OlxLebanonAdapterOptions = {}): Ol
       const ad = rec(data.ad);
       const parsed = toAd(Object.keys(ad).length ? ad : rec(raw), raw);
       // edit-ad also reports the state next to the ad.
-      if (parsed.status === 'unknown' && str(data.state)) parsed.status = normalizeStatus(str(data.state));
+      if (parsed.status === 'unknown' && str(data.state))
+        Object.assign(parsed, olxLebanonState(str(data.state)), { state: str(data.state) });
       return parsed;
     },
 

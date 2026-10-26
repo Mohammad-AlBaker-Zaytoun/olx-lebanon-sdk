@@ -1,5 +1,6 @@
 import type { ListingsApi } from './ListingsApi.js';
-import type { AdStatus, ListingInput, OlxAd } from './types.js';
+import { adActions } from './actions.js';
+import type { ActivateResult, AdAction, AdMetrics, AdStatus, ListingInput, OlxAd, RejectionReason, SoldOn } from './types.js';
 
 /** An ad's content for `client.ads`: the same as a listing, usually with OLX ids. */
 export type AdInput = ListingInput;
@@ -61,5 +62,53 @@ export class AdsApi {
   /** The ad's current state, or undefined if it isn't in your newest ads. */
   async status(adId: string, opts: { maxPages?: number } = {}): Promise<AdStatus | undefined> {
     return (await this.find(adId, opts))?.status;
+  }
+
+  /** Takes the ad offline without deleting it. `republish` brings it back. A paced write. */
+  deactivate(adId: string): Promise<void> {
+    return this.listings.deactivate(adId);
+  }
+
+  /**
+   * Puts a `limited` ad live with a free slot, if the account has one left in its category:
+   * `activated`, `needs_package` (buy a package on OLX; the SDK never buys) or `not_limited`.
+   * A paced write.
+   */
+  activate(adId: string): Promise<ActivateResult> {
+    return this.listings.activate(adId);
+  }
+
+  /** Marks the ad as sold, on OLX or elsewhere. After that it can only be deleted. A paced write. */
+  markSold(adId: string, opts: { soldOn: SoldOn }): Promise<void> {
+    if (opts?.soldOn !== 'olx' && opts?.soldOn !== 'elsewhere') {
+      return Promise.reject(new TypeError("markSold: pass { soldOn: 'olx' } or { soldOn: 'elsewhere' }"));
+    }
+    return this.listings.markSold(adId, opts.soldOn);
+  }
+
+  /**
+   * Brings back an expired or deactivated ad with this content (the whole ad, as for `update`).
+   * Leave `images` out to keep the ad's photos. A paced write.
+   */
+  async republish(adId: string, ad: AdInput): Promise<OlxAd> {
+    const republished = await this.listings.update(adId, ad, { photosUnchanged: ad.images === undefined, republish: true });
+    if (republished.status !== 'unknown') return republished;
+    const status = await this.listings.lookupStatus(adId);
+    return status ? { ...republished, status } : republished;
+  }
+
+  /** Why OLX's review refused the ad, or undefined when there is no reason on file. */
+  rejectionReason(adId: string): Promise<RejectionReason | undefined> {
+    return this.listings.rejectionReason(adId);
+  }
+
+  /** Views and leads per ad id. Ads OLX has no numbers for are left out. */
+  metrics(adIds: readonly string[]): Promise<Record<string, AdMetrics>> {
+    return this.listings.metrics(adIds);
+  }
+
+  /** What can be done with an ad in its status: see `adActions`. */
+  actions(ad: Pick<OlxAd, 'status' | 'rejection'>): AdAction[] {
+    return adActions(ad);
   }
 }

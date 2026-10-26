@@ -18,6 +18,23 @@ export const ENDPOINT_NAMES = [
   'signImageUpload',
   /** The logged-in account (id, name, phone), for wire formats that need it. */
   'currentUser',
+  /** Takes an ad offline without deleting it. */
+  'deactivateAd',
+  /** Puts a `limited` ad live, using a free slot if one is left. */
+  'activateAd',
+  'markAdSold',
+  /** Brings back an expired or deactivated ad; the body is the same as an edit. */
+  'republishAd',
+  'adRejectionReason',
+  /** Views and leads for one or more ads. */
+  'adMetrics',
+  'wallet',
+  /** Package offers for posting past the free limit in a category. */
+  'postingLimitOffers',
+  /** OLX delivery: listings with orders, the orders of one listing, and order status changes. */
+  'sellingOrders',
+  'sellingOrdersByAd',
+  'updateDeliveryOrder',
 ] as const;
 
 export type EndpointName = (typeof ENDPOINT_NAMES)[number];
@@ -67,6 +84,17 @@ export function loadEndpoints(file: string): EndpointMap {
   return parseEndpoints(JSON.parse(readFileSync(file, 'utf8')));
 }
 
+/**
+ * Only the endpoints a file actually lists (an entry set to `null` switches one off), to lay
+ * over the built-in map. New endpoints in later SDK versions then work without editing the file.
+ */
+export function loadEndpointOverrides(file: string): Partial<EndpointMap> {
+  if (!existsSync(file)) return {};
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  const parsed = parseEndpoints(raw);
+  return Object.fromEntries(ENDPOINT_NAMES.filter((n) => n in raw).map((n) => [n, parsed[n]]));
+}
+
 export function requireEndpoint(map: EndpointMap, name: EndpointName): EndpointSpec {
   const spec = map[name];
   if (!spec) throw new EndpointNotConfiguredError(name);
@@ -85,7 +113,7 @@ export function buildUrl(
   baseUrl: string,
   spec: EndpointSpec,
   params: Record<string, string> = {},
-  query?: Record<string, string | number | boolean | undefined>,
+  query?: Record<string, string | number | boolean | undefined | ReadonlyArray<string | number>>,
 ): string {
   const path = spec.path.replace(/\{(\w+)\}/g, (_match, key: string) => {
     const value = params[key];
@@ -97,7 +125,10 @@ export function buildUrl(
   });
   const url = new URL(path, baseUrl);
   if (query) {
-    for (const [k, v] of Object.entries(query)) if (v !== undefined) url.searchParams.set(k, String(v));
+    for (const [k, v] of Object.entries(query)) {
+      if (Array.isArray(v)) for (const item of v) url.searchParams.append(k, String(item));
+      else if (v !== undefined) url.searchParams.set(k, String(v));
+    }
   }
   return url.toString();
 }

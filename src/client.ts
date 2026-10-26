@@ -1,12 +1,14 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OlxConfig, WriteLimits } from './config.js';
-import { endpointStatus, loadEndpoints, type EndpointMap, type EndpointName } from './endpoints.js';
+import { endpointStatus, loadEndpointOverrides, loadEndpoints, type EndpointMap, type EndpointName } from './endpoints.js';
 import { OlxHttpClient, type HttpClientOptions, type Transport } from './http/HttpClient.js';
 import { WriteRateLimiter, type RateLimiterClock } from './http/rateLimiter.js';
 import { placeholderAdapter, type OlxAdapter } from './listings/adapter.js';
 import { OlxCatalog, type OlxCatalogOptions } from './catalog/OlxCatalog.js';
+import { AccountApi } from './account/AccountApi.js';
 import { AdsApi } from './listings/AdsApi.js';
+import { OrdersApi } from './orders/OrdersApi.js';
 import { OLX_LB_ENDPOINTS, olxLebanonAdapter } from './listings/olxLebanon.js';
 import type { ContactSettings } from './listings/types.js';
 import { ImageUploader, type ImageUploaderOptions } from './listings/images.js';
@@ -57,6 +59,10 @@ export interface OlxClientOptions {
  */
 export class OlxClient {
   readonly ads: AdsApi;
+  /** Your account: profile, wallet, package offers (read only). */
+  readonly account: AccountApi;
+  /** OLX delivery orders on your listings (experimental). */
+  readonly orders: OrdersApi;
   readonly catalog: OlxCatalog;
   readonly session: SessionManager;
   readonly http: OlxHttpClient;
@@ -111,6 +117,8 @@ export class OlxClient {
       logger,
     });
     this.ads = new AdsApi(this.listings);
+    this.account = new AccountApi(this.http, this.listings);
+    this.orders = new OrdersApi(this.http);
     this.catalog = new OlxCatalog(opts.catalogApi);
     this.syncStore = opts.syncStore;
     this.sync = new SyncService({ listings: this.listings, store: opts.syncStore, mapper: this.mapper, logger });
@@ -129,7 +137,11 @@ export class OlxClient {
       });
     }
     const endpoints =
-      overrides.endpoints ?? (existsSync(config.endpointsFile) ? loadEndpoints(config.endpointsFile) : OLX_LB_ENDPOINTS);
+      overrides.endpoints ??
+      (config.adapter === 'placeholder'
+        ? loadEndpoints(config.endpointsFile)
+        : // An endpoints file only overrides what it lists; the rest stay built in.
+          { ...OLX_LB_ENDPOINTS, ...loadEndpointOverrides(config.endpointsFile) });
     return new OlxClient({
       baseUrl: config.baseUrl,
       writeLimits: config.writeLimits,

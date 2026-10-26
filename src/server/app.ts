@@ -5,6 +5,7 @@ import { isSafePathParam } from '../endpoints.js';
 import { ForgetConflictError, LinkConflictError, toErrorInfo } from '../errors.js';
 import { RestListingSchema } from '../listings/types.js';
 import type { SyncRecord, SyncStore } from '../sync/SyncStore.js';
+import type { AdMetrics } from '../listings/types.js';
 import type { Logger } from '../logger.js';
 import { openApiDocument } from './openapi.js';
 import { QueueFullError, QueueStoppedError, type JobQueue } from './queue.js';
@@ -22,6 +23,8 @@ export interface ServerDeps {
   status: () => Promise<Record<string, unknown>>;
   /** Unexpected errors (500 internal_error) are logged here, with the request id. */
   logger?: Logger;
+  /** Views and leads by ad id, for GET /v1/products/:id/listing/metrics. */
+  metrics?: (adIds: string[]) => Promise<Record<string, AdMetrics>>;
 }
 
 /**
@@ -75,6 +78,8 @@ function fail(
 ) {
   return reply.code(status).send({ error: { code, message, ...(details ? { details } : {}), requestId: req.id } });
 }
+
+const SoldSchema = z.object({ soldOn: z.enum(['olx', 'elsewhere']) });
 
 const zodIssues = (issues: z.ZodIssue[]) => issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
 
@@ -140,6 +145,45 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         const { productId } = req.params;
         if (!PRODUCT_ID.test(productId)) return invalidProductId(req, reply);
         const job = deps.queue.enqueue('remove', productId);
+        return reply.code(202).send({ jobId: job.id, status: job.status });
+      });
+
+      // State changes run as queued, paced jobs, like upsert and remove.
+      for (const [path, type] of [
+        ['deactivate', 'deactivate'],
+        ['activate', 'activate'],
+      ] as const) {
+        v1.post<{ Params: { productId: string } }>(`/products/:productId/listing/${path}`, async (req, reply) => {
+          const { productId } = req.params;
+          if (!PRODUCT_ID.test(productId)) return invalidProductId(req, reply);
+          const job = deps.queue.enqueue(type, productId);
+          return reply.code(202).send({ jobId: job.id, status: job.status });
+        });
+      }
+
+      v1.post<{ Params: { productId: string } }>('/products/:productId/listing/sold', async (req, reply) => {
+        const { productId } = req.params;
+        if (!PRODUCT_ID.test(productId)) return invalidProductId(req, reply);
+        const parsed = SoldSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return fail(req, reply, 400, 'bad_request', 'The body must be {"soldOn": "olx"} or {"soldOn": "elsewhere"}', {
+            issues: zodIssues(parsed.error.issues),
+          });
+        }
+        const job = deps.queue.enqueue('mark_sold', productId, { soldOn: parsed.data.soldOn });
+        return reply.code(202).send({ jobId: job.id, status: job.status });
+      });
+
+      v1.get<{ Params: { productId: string } }>('/products/:productId/listing/metrics', async (req, reply) => {
+        const record = await deps.store.get(req.params.productId);
+        if (!record?.adId) return fail(req, reply, 404, 'not_found', `No OLX ad linked to product "${req.params.productId}"`);
+        if (!deps.metrics) return fail(req, reply, 404, 'not_found', 'Metrics are not available in this service');
+        const byAd = await deps.metrics([record.adId]);
+        return { productId: record.productId, adId: record.adId, metrics: byAd[record.adId] ?? null };
+      });
+
+      v1.post('/listings/refresh', async (_req, reply) => {
+        const job = deps.queue.enqueue('refresh', '*');
         return reply.code(202).send({ jobId: job.id, status: job.status });
       });
 

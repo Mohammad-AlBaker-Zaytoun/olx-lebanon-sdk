@@ -112,7 +112,9 @@ export function normalizeStatus(value?: string): AdStatus {
   // Negated positives ("not_approved", "not_active", "unpublished", "inactive") are not active,
   // and their exact meaning varies, so don't guess.
   if (/(^|[^a-z])(not|non)([^a-z]|$)|(^|[^a-z])(un|in)(active|approved|published|live)/.test(s)) return 'unknown';
-  if (/delet|remov|archiv|deactiv|disabled/.test(s)) return 'deleted';
+  if (/deactiv|disabled|paused/.test(s)) return 'inactive';
+  if (/(^|_)sold/.test(s)) return 'sold';
+  if (/delet|remov|archiv/.test(s)) return 'deleted';
   if (/limit/.test(s)) return 'limited';
   if (/expir|outdated/.test(s)) return 'expired';
   if (/pending|moderat|review|waiting/.test(s)) return 'pending_review';

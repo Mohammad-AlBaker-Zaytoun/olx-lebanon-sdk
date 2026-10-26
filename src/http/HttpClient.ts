@@ -10,7 +10,8 @@ export type Transport = (url: string, init: RequestInit) => Promise<Response>;
 
 export interface CallOptions {
   params?: Record<string, string>;
-  query?: Record<string, string | number | boolean | undefined>;
+  /** Arrays repeat the key: `{ 'ads_ids[]': ['1', '2'] }` → `?ads_ids[]=1&ads_ids[]=2`. */
+  query?: Record<string, string | number | boolean | undefined | ReadonlyArray<string | number>>;
   json?: unknown;
   form?: FormData;
   headers?: Record<string, string>;

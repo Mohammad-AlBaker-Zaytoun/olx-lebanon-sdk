@@ -22,7 +22,10 @@ describe('placeholderAdapter', () => {
   it.each([
     ['active', 'active'],
     ['LIVE', 'active'],
-    ['deactivated', 'deleted'],
+    ['deactivated', 'inactive'],
+    ['disabled', 'inactive'],
+    ['sold', 'sold'],
+    ['deleted', 'deleted'],
     ['rejected_by_moderator', 'rejected'],
     ['expired', 'expired'],
     ['weird', 'unknown'],

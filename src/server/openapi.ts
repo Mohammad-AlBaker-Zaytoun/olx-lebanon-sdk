@@ -140,6 +140,108 @@ export const openApiDocument = {
         },
       },
     },
+    '/v1/products/{productId}/listing/deactivate': {
+      parameters: [productId],
+      post: {
+        tags: ['Listings'],
+        operationId: 'deactivateListing',
+        summary: "Take the product's ad offline without deleting it",
+        description: 'Queued and paced. The link stays; the next PUT brings the ad back with a republish.',
+        responses: {
+          '202': json(ref('Accepted'), 'Queued'),
+          '400': errorResponse('Invalid product id (`invalid_product_id`)'),
+          '429': errorResponse('Too many products waiting (`queue_full`)'),
+          '503': errorResponse('Shutting down (`shutting_down`)'),
+          ...common,
+        },
+      },
+    },
+    '/v1/products/{productId}/listing/activate': {
+      parameters: [productId],
+      post: {
+        tags: ['Listings'],
+        operationId: 'activateListing',
+        summary: "Put the product's `limited` ad live with a free slot",
+        description:
+          'Queued and paced. The job result has `result`: `activated`, `needs_package` (no free slot left; a package is ' +
+          'needed on OLX, which the service never buys) or `not_limited`.',
+        responses: {
+          '202': json(ref('Accepted'), 'Queued'),
+          '400': errorResponse('Invalid product id (`invalid_product_id`)'),
+          '429': errorResponse('Too many products waiting (`queue_full`)'),
+          '503': errorResponse('Shutting down (`shutting_down`)'),
+          ...common,
+        },
+      },
+    },
+    '/v1/products/{productId}/listing/sold': {
+      parameters: [productId],
+      post: {
+        tags: ['Listings'],
+        operationId: 'markListingSold',
+        summary: "Mark the product's ad as sold",
+        description: 'Queued and paced. A sold ad can only be deleted; resolve with `forget` to post a new ad for the product.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: { soldOn: { type: 'string', enum: ['olx', 'elsewhere'] } },
+                required: ['soldOn'],
+              },
+            },
+          },
+        },
+        responses: {
+          '202': json(ref('Accepted'), 'Queued'),
+          '400': errorResponse('Invalid product id or body (`invalid_product_id`, `bad_request`)'),
+          '429': errorResponse('Too many products waiting (`queue_full`)'),
+          '503': errorResponse('Shutting down (`shutting_down`)'),
+          ...common,
+        },
+      },
+    },
+    '/v1/products/{productId}/listing/metrics': {
+      parameters: [productId],
+      get: {
+        tags: ['Listings'],
+        operationId: 'getListingMetrics',
+        summary: "Views and leads for the product's ad",
+        responses: {
+          '200': json(
+            {
+              type: 'object',
+              properties: {
+                productId: { type: 'string' },
+                adId: { type: 'string' },
+                metrics: { oneOf: [ref('AdMetrics'), { type: 'null' }] },
+              },
+              required: ['productId', 'adId', 'metrics'],
+            },
+            'Metrics (null when OLX has no numbers yet)',
+          ),
+          '404': errorResponse('No ad linked to this product (`not_found`)'),
+          ...common,
+        },
+      },
+    },
+    '/v1/listings/refresh': {
+      post: {
+        tags: ['Listings'],
+        operationId: 'refreshListings',
+        summary: "Re-read every linked ad's status from OLX",
+        description:
+          'Queued. Reads "My ads" and stores statuses that changed (expired, rejected, live after review). The job result ' +
+          'has `updated` (links), `missing` (product ids whose ad was not found) and `checked`.',
+        responses: {
+          '202': json(ref('Accepted'), 'Queued'),
+          '429': errorResponse('Too many products waiting (`queue_full`)'),
+          '503': errorResponse('Shutting down (`shutting_down`)'),
+          ...common,
+        },
+      },
+    },
     '/v1/products/{productId}/listing/resolve': {
       parameters: [productId],
       post: {
@@ -262,8 +364,29 @@ export const openApiDocument = {
       },
       AdStatus: {
         type: 'string',
-        enum: ['active', 'pending_review', 'limited', 'rejected', 'expired', 'deleted', 'unknown'],
-        description: '`limited`: the account used its free ads in that category; the ad needs a paid OLX package to be shown.',
+        enum: ['active', 'pending_review', 'limited', 'rejected', 'expired', 'inactive', 'sold', 'deleted', 'unknown'],
+        description:
+          '`limited`: the account used its free ads in that category; the ad needs a paid OLX package to be shown. ' +
+          '`inactive`: deactivated (a PUT republishes it). `sold`: marked as sold.',
+      },
+      AdMetrics: {
+        type: 'object',
+        properties: Object.fromEntries(
+          [
+            'searchViews',
+            'views',
+            'storyViews',
+            'reelViews',
+            'phoneViews',
+            'chatLeads',
+            'whatsAppLeads',
+            'smsLeads',
+            'applyLeads',
+            'favorites',
+            'leads',
+          ].map((k) => [k, { type: 'integer', minimum: 0 }]),
+        ),
+        description: '`leads` = phoneViews + chatLeads + whatsAppLeads + smsLeads + applyLeads.',
       },
       SyncRecord: {
         type: 'object',
@@ -340,7 +463,7 @@ export const openApiDocument = {
         type: 'object',
         properties: {
           id: { type: 'string' },
-          type: { type: 'string', enum: ['upsert', 'remove'] },
+          type: { type: 'string', enum: ['upsert', 'remove', 'deactivate', 'activate', 'mark_sold', 'refresh'] },
           productId: { type: 'string' },
           force: { type: 'boolean' },
           status: { type: 'string', enum: ['queued', 'running', 'succeeded', 'failed', 'cancelled'] },
@@ -348,7 +471,9 @@ export const openApiDocument = {
           startedAt: { type: 'string', format: 'date-time' },
           finishedAt: { type: 'string', format: 'date-time' },
           result: {
-            description: 'When succeeded: { action: created | updated | unchanged, record } or { action: deleted, adId }',
+            description:
+              'When succeeded. upsert: { action: created | updated | republished | unchanged, record }. remove: { action: deleted, adId }. ' +
+              'deactivate / mark_sold: { record }. activate: { result, record }. refresh: { updated, missing, checked }.',
             type: 'object',
             additionalProperties: true,
           },

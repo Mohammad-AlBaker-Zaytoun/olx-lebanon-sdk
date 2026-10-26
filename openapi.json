@@ -416,6 +416,428 @@
         }
       }
     },
+    "/v1/products/{productId}/listing/deactivate": {
+      "parameters": [
+        {
+          "name": "productId",
+          "in": "path",
+          "required": true,
+          "description": "Your product's id: 1-128 letters, digits and . _ : -",
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "Listings"
+        ],
+        "operationId": "deactivateListing",
+        "summary": "Take the product's ad offline without deleting it",
+        "description": "Queued and paced. The link stays; the next PUT brings the ad back with a republish.",
+        "responses": {
+          "202": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid product id (`invalid_product_id`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong X-Api-Key (`unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many products waiting (`queue_full`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error (`internal_error`); details are in the service log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down (`shutting_down`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/products/{productId}/listing/activate": {
+      "parameters": [
+        {
+          "name": "productId",
+          "in": "path",
+          "required": true,
+          "description": "Your product's id: 1-128 letters, digits and . _ : -",
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "Listings"
+        ],
+        "operationId": "activateListing",
+        "summary": "Put the product's `limited` ad live with a free slot",
+        "description": "Queued and paced. The job result has `result`: `activated`, `needs_package` (no free slot left; a package is needed on OLX, which the service never buys) or `not_limited`.",
+        "responses": {
+          "202": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid product id (`invalid_product_id`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong X-Api-Key (`unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many products waiting (`queue_full`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error (`internal_error`); details are in the service log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down (`shutting_down`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/products/{productId}/listing/sold": {
+      "parameters": [
+        {
+          "name": "productId",
+          "in": "path",
+          "required": true,
+          "description": "Your product's id: 1-128 letters, digits and . _ : -",
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "Listings"
+        ],
+        "operationId": "markListingSold",
+        "summary": "Mark the product's ad as sold",
+        "description": "Queued and paced. A sold ad can only be deleted; resolve with `forget` to post a new ad for the product.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "soldOn": {
+                    "type": "string",
+                    "enum": [
+                      "olx",
+                      "elsewhere"
+                    ]
+                  }
+                },
+                "required": [
+                  "soldOn"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid product id or body (`invalid_product_id`, `bad_request`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong X-Api-Key (`unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many products waiting (`queue_full`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error (`internal_error`); details are in the service log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down (`shutting_down`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/products/{productId}/listing/metrics": {
+      "parameters": [
+        {
+          "name": "productId",
+          "in": "path",
+          "required": true,
+          "description": "Your product's id: 1-128 letters, digits and . _ : -",
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Listings"
+        ],
+        "operationId": "getListingMetrics",
+        "summary": "Views and leads for the product's ad",
+        "responses": {
+          "200": {
+            "description": "Metrics (null when OLX has no numbers yet)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "productId": {
+                      "type": "string"
+                    },
+                    "adId": {
+                      "type": "string"
+                    },
+                    "metrics": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/AdMetrics"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "productId",
+                    "adId",
+                    "metrics"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong X-Api-Key (`unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No ad linked to this product (`not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error (`internal_error`); details are in the service log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/listings/refresh": {
+      "post": {
+        "tags": [
+          "Listings"
+        ],
+        "operationId": "refreshListings",
+        "summary": "Re-read every linked ad's status from OLX",
+        "description": "Queued. Reads \"My ads\" and stores statuses that changed (expired, rejected, live after review). The job result has `updated` (links), `missing` (product ids whose ad was not found) and `checked`.",
+        "responses": {
+          "202": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong X-Api-Key (`unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many products waiting (`queue_full`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error (`internal_error`); details are in the service log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Shutting down (`shutting_down`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/products/{productId}/listing/resolve": {
       "parameters": [
         {
@@ -790,10 +1212,62 @@
           "limited",
           "rejected",
           "expired",
+          "inactive",
+          "sold",
           "deleted",
           "unknown"
         ],
-        "description": "`limited`: the account used its free ads in that category; the ad needs a paid OLX package to be shown."
+        "description": "`limited`: the account used its free ads in that category; the ad needs a paid OLX package to be shown. `inactive`: deactivated (a PUT republishes it). `sold`: marked as sold."
+      },
+      "AdMetrics": {
+        "type": "object",
+        "properties": {
+          "searchViews": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "views": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "storyViews": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reelViews": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "phoneViews": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "chatLeads": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "whatsAppLeads": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "smsLeads": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "applyLeads": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "favorites": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "leads": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "description": "`leads` = phoneViews + chatLeads + whatsAppLeads + smsLeads + applyLeads."
       },
       "SyncRecord": {
         "type": "object",
@@ -933,7 +1407,11 @@
             "type": "string",
             "enum": [
               "upsert",
-              "remove"
+              "remove",
+              "deactivate",
+              "activate",
+              "mark_sold",
+              "refresh"
             ]
           },
           "productId": {
@@ -965,7 +1443,7 @@
             "format": "date-time"
           },
           "result": {
-            "description": "When succeeded: { action: created | updated | unchanged, record } or { action: deleted, adId }",
+            "description": "When succeeded. upsert: { action: created | updated | republished | unchanged, record }. remove: { action: deleted, adId }. deactivate / mark_sold: { record }. activate: { result, record }. refresh: { updated, missing, checked }.",
             "type": "object",
             "additionalProperties": true
           },

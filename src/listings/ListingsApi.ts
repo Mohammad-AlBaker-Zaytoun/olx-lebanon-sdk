@@ -5,7 +5,19 @@ import type { SessionProvider } from '../session/SessionManager.js';
 import type { CatalogMapper } from '../mapping/CatalogMapper.js';
 import type { OlxAdapter, PayloadContext } from './adapter.js';
 import type { ImageUploader } from './images.js';
-import type { AccountInfo, AdStatus, ContactSettings, ListingInput, OlxAd, UploadedImage } from './types.js';
+import { parseActivateResult, parseAdMetrics, parseRejectionReason } from './olxResponses.js';
+import type {
+  AccountInfo,
+  ActivateResult,
+  AdMetrics,
+  AdStatus,
+  ContactSettings,
+  ListingInput,
+  OlxAd,
+  RejectionReason,
+  SoldOn,
+  UploadedImage,
+} from './types.js';
 
 export interface CreateHooks {
   /**
@@ -22,6 +34,8 @@ export interface UpdateOptions {
    * photos when none are sent, they aren't uploaded again (so they don't pile up on OLX).
    */
   photosUnchanged?: boolean;
+  /** Send it as a republish (an expired or deactivated ad) instead of an edit. Same body. */
+  republish?: boolean;
 }
 
 export interface ListingsPort {
@@ -33,6 +47,12 @@ export interface ListingsPort {
    * Called after the result is saved; must never throw for a missing ad (return undefined).
    */
   lookupStatus?(adId: string): Promise<AdStatus | undefined>;
+  /** Optional: deactivate, activate and mark sold, for `sync.deactivate` / `activate` / `markSold`. */
+  deactivate?(adId: string): Promise<void>;
+  activate?(adId: string): Promise<ActivateResult>;
+  markSold?(adId: string, soldOn: SoldOn): Promise<void>;
+  /** Optional: one page of "My ads", for `sync.refresh`. */
+  listPage?(page: number, perPage: number): Promise<{ ads: OlxAd[]; hasMore: boolean }>;
 }
 
 export interface ListingsApiDeps {
@@ -54,6 +74,8 @@ export interface ListingsApiDeps {
 const LOOKUP_PAGES = 3;
 const LOOKUP_PAGE_SIZE = 20; // the web app's own page size
 const LOOKUP_TIMEOUT_MS = 10_000;
+/** Ads per analytics request. */
+const METRICS_BATCH = 50;
 /** Pages of "My ads" searched for an ad's current photos before an edit that replaces them. */
 const PHOTO_LOOKUP_PAGES = 50;
 
@@ -146,7 +168,7 @@ export class ListingsApi implements ListingsPort {
     }
     const refund = await this.d.http.acquireWriteSlot();
     const images = keepPhotos ? [] : await this.uploadImages(input, refund, ctx);
-    const raw = await this.d.http.call('updateAd', {
+    const raw = await this.d.http.call(opts.republish ? 'republishAd' : 'updateAd', {
       params: { id: adId },
       json: this.payload(mapped, images, ctx),
       rateLimit: false,
@@ -217,8 +239,56 @@ export class ListingsApi implements ListingsPort {
     await this.d.http.call('deleteAd', { params: { id: adId } });
   }
 
+  /** Takes the ad offline without deleting it (OLX state `disabled`). */
+  async deactivate(adId: string): Promise<void> {
+    await this.d.http.call('deactivateAd', { params: { id: adId } });
+  }
+
+  /**
+   * Puts a `limited` ad live with a free slot, if one is left. OLX's answer says which; when it
+   * can't be read, the ad's state decides.
+   */
+  async activate(adId: string): Promise<ActivateResult> {
+    const raw = await this.d.http.call('activateAd', { params: { id: adId } });
+    const result = parseActivateResult(raw);
+    if (result) return result;
+    const status = await this.lookupStatus(adId);
+    return status === 'active' || status === 'pending_review' ? 'activated' : 'needs_package';
+  }
+
+  /** Marks the ad as sold, on OLX or elsewhere, as the website's "Mark as sold" does. */
+  async markSold(adId: string, soldOn: SoldOn): Promise<void> {
+    await this.d.http.call('markAdSold', {
+      params: { id: adId },
+      json: { reason: 'sold', soldType: soldOn === 'olx' ? 'inside' : 'outside' },
+    });
+  }
+
+  /** Why OLX's review refused the ad, or undefined when OLX has no reason on file. */
+  async rejectionReason(adId: string): Promise<RejectionReason | undefined> {
+    return parseRejectionReason(await this.d.http.call('adRejectionReason', { params: { id: adId } }));
+  }
+
+  /** Views and leads per ad id (ads OLX has no numbers for are left out). */
+  async metrics(adIds: readonly string[]): Promise<Record<string, AdMetrics>> {
+    const out: Record<string, AdMetrics> = {};
+    const unique = [...new Set(adIds)];
+    for (let i = 0; i < unique.length; i += METRICS_BATCH) {
+      const raw = await this.d.http.call('adMetrics', { query: { 'ads_ids[]': unique.slice(i, i + METRICS_BATCH) } });
+      Object.assign(out, parseAdMetrics(raw));
+    }
+    return out;
+  }
+
   async get(adId: string): Promise<OlxAd> {
     return this.d.adapter.parseAd(await this.d.http.call('getAd', { params: { id: adId } }));
+  }
+
+  /** One page of "My ads". */
+  async listPage(page: number, perPage: number): Promise<{ ads: OlxAd[]; hasMore: boolean }> {
+    const raw = await this.d.http.call('listMyAds', { query: { page, per_page: perPage } });
+    const ads = this.d.adapter.parseAdList(raw);
+    return { ads, hasMore: this.d.adapter.hasNextPage ? this.d.adapter.hasNextPage(raw) : ads.length >= perPage };
   }
 
   async listMine(query?: Record<string, string | number | boolean | undefined>): Promise<OlxAd[]> {

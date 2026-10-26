@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { toErrorInfo, type ErrorInfo } from '../errors.js';
-import type { ListingInput } from '../listings/types.js';
+import type { ListingInput, SoldOn } from '../listings/types.js';
 import { silentLogger, type Logger } from '../logger.js';
 
-export type JobType = 'upsert' | 'remove';
+/**
+ * `upsert` / `remove`: create, edit or delete the product's ad. `deactivate`, `activate`,
+ * `mark_sold`: change its state. `refresh`: re-read every linked ad's status (product id `*`).
+ */
+export type JobType = 'upsert' | 'remove' | 'deactivate' | 'activate' | 'mark_sold' | 'refresh';
+
+/** What a job carries: the listing for an upsert, where it sold for mark_sold, nothing otherwise. */
+export type JobPayload = ListingInput | { soldOn: SoldOn } | undefined;
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface Job {
@@ -21,7 +28,7 @@ export interface Job {
   error?: ErrorInfo;
 }
 
-export type JobHandler = (job: Job, payload: ListingInput | undefined) => Promise<unknown>;
+export type JobHandler = (job: Job, payload: JobPayload) => Promise<unknown>;
 
 export interface JobQueueOptions {
   logger?: Logger;
@@ -53,7 +60,7 @@ export class QueueFullError extends Error {
  */
 export class JobQueue {
   private readonly jobs = new Map<string, Job>();
-  private readonly payloads = new Map<string, ListingInput | undefined>();
+  private readonly payloads = new Map<string, JobPayload>();
   private pending: string[] = [];
   /** productId → waiting job id, for O(1) coalescing. */
   private readonly pendingByProduct = new Map<string, string>();
@@ -69,7 +76,7 @@ export class JobQueue {
     this.logger = opts.logger ?? silentLogger;
   }
 
-  enqueue(type: JobType, productId: string, payload?: ListingInput, opts: { force?: boolean } = {}): Job {
+  enqueue(type: JobType, productId: string, payload?: JobPayload, opts: { force?: boolean } = {}): Job {
     if (this.stopped) throw new QueueStoppedError();
     const waitingId = this.pendingByProduct.get(productId);
     if (waitingId) {

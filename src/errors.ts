@@ -137,13 +137,16 @@ export class ReconcileRequiredError extends OlxSdkError {
 
   constructor(
     public readonly productId: string,
-    public readonly reason: 'uncertain_create' | 'ad_gone',
+    public readonly reason: 'uncertain_create' | 'ad_gone' | 'ad_sold',
   ) {
     super(
       reason === 'uncertain_create'
         ? `Product "${productId}": an earlier create may or may not have posted an ad. Check "My ads" on OLX, ` +
             'then resolve it: link the ad id if it exists, or forget the link to allow posting again.'
-        : `Product "${productId}": the linked OLX ad no longer exists (deleted or expired on OLX). ` +
+        : reason === 'ad_sold'
+          ? `Product "${productId}": its OLX ad was marked as sold, so it can't be edited. Forget the link ` +
+            'to post a new ad for it (the sold ad stays on OLX as sold), or remove it to delete the sold ad.'
+          : `Product "${productId}": the linked OLX ad no longer exists (deleted or expired on OLX). ` +
             'Forget the link to post a new ad, or link a different ad id.',
     );
   }
