@@ -11,3 +11,7 @@ data/
 
 .DS_Store
 *.log
+
+# Your own copies of config/*.example.json
+config/endpoints.json
+config/catalog.json

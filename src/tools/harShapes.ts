@@ -32,6 +32,9 @@ export interface HarFull {
 const SECRET_KEY =
   /pass|token|secret|auth|cookie|session|otp|^code$|phone|mobile|whatsapp|email|e_mail|^name$|first_?name|last_?name|full_?name|user_?name|contact|address|^sub$|^sid$|ip_?addr|device_?id|^jti$|nonce|signature|^sig$|credential|^key$/i;
 
+/** Keys holding free text: always described, even when the value looks like an enum. */
+const TEXT_KEY = /^(title|description|message|slug|body|text|comment|summary|details?|name)(_l\d+|_ar|_en)?$/i;
+
 /** Request headers whose values are safe and useful to see. */
 const SAFE_HEADERS = new Set([
   'accept',
@@ -77,8 +80,42 @@ function describeString(s: string): string {
   // Hierarchical ids such as location `0-1-37-12`: short numeric segments.
   if (/^\d{1,4}([-_.]\d{1,4}){2,}$/.test(s)) return s;
   if (/^\+?\d[\d\s().-]{5,}$/.test(s)) return '<phone-like>';
-  if (s.length <= 32 && ENUM_LIKE.test(s) && !isSensitiveSegment(s)) return s;
+  if (s.length <= 32 && ENUM_LIKE.test(s) && !/\d{5,}/.test(s) && !isSensitiveSegment(s)) return s;
+  if (!/\s/.test(s)) return `<id ${idPattern(s)}>`;
   return `<text ${s.length} chars>`;
+}
+
+/**
+ * The format of an identifier without its content, e.g. `{uuid}_{d13}.png` or `img_{d8}`.
+ * Digits become `{dN}`, hex runs `{hN}`, other mixed runs `{xN}`; short lowercase words
+ * and separators are kept.
+ */
+export function idPattern(s: string): string {
+  return s
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '\u0000')
+    .split(/([-_./:=+]|\u0000)/)
+    .map((part) => {
+      if (part === '\u0000') return '{uuid}';
+      if (part === '' || /^[-_./:=+]$/.test(part)) return part;
+      if (/^\d+$/.test(part)) return `{d${part.length}}`;
+      if (/^[a-z]{1,12}$/.test(part)) return part;
+      if (/^[0-9a-f]+$/i.test(part)) return `{h${part.length}}`;
+      return `{x${part.length}}`;
+    })
+    .join('');
+}
+
+/** Masks every value but keeps the structure and key names. */
+function maskDeep(value: unknown, depth: number): unknown {
+  if (value === null || value === undefined) return value;
+  if (depth > 6) return '<masked>';
+  if (Array.isArray(value)) return value.length ? [maskDeep(value[0], depth + 1), ...(value.length > 1 ? [`…+${value.length - 1} more`] : [])] : [];
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[isSensitiveSegment(k) ? '{id}' : k] = maskDeep(v, depth + 1);
+    return out;
+  }
+  return `<masked ${typeof value}>`;
 }
 
 function describeNumber(n: number): number | string {
@@ -91,9 +128,10 @@ export function shapeOf(value: unknown, opts: ShapeOptions = {}, depth = 0, key?
   const maxDepth = opts.maxDepth ?? 12;
   if (depth > maxDepth) return '<…>';
   if (!opts.keepValues && key !== undefined && SECRET_KEY.test(key)) {
-    if (value === null || value === undefined) return value;
-    if (typeof value === 'object') return Array.isArray(value) ? `<masked array ${value.length}>` : '<masked object>';
-    return `<masked ${typeof value}>`;
+    return maskDeep(value, depth);
+  }
+  if (!opts.keepValues && key !== undefined && TEXT_KEY.test(key) && typeof value === 'string') {
+    return value === '' ? '' : `<text ${value.length} chars>`;
   }
   if (Array.isArray(value)) {
     const items = value.slice(0, maxItems).map((v) => shapeOf(v, opts, depth + 1, key));
@@ -205,8 +243,14 @@ export interface ShapeReportOptions {
 const STATIC = /\.(js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|map)$/i;
 const within = (host: string, d: string) => host === d || host.endsWith('.' + d);
 
-function pathPattern(u: URL): string {
-  return u.host + u.pathname.split('/').map((s) => (isSensitiveSegment(s) ? '{id}' : s)).join('/');
+function pathPattern(u: URL, withDigits = false): string {
+  return (
+    u.host +
+    u.pathname
+      .split('/')
+      .map((s) => (!isSensitiveSegment(s) ? s : withDigits && /^\d+$/.test(s) ? `{id:${s.length} digits}` : '{id}'))
+      .join('/')
+  );
 }
 
 /**
@@ -237,7 +281,7 @@ export function buildShapeReport(har: HarFull, opts: ShapeReportOptions): { text
     const auth = reqHeaders.find((h) => h.name.toLowerCase() === 'authorization');
     if (auth) tokens.set(host, describeAuthorization(auth.value));
 
-    const pattern = `${request.method} ${pathPattern(url)}`;
+    const pattern = `${request.method} ${pathPattern(url, true)}`;
     const n = (seen.get(pattern) ?? 0) + 1;
     seen.set(pattern, n);
     const isPublic = opts.isPublic?.(url) ?? false;

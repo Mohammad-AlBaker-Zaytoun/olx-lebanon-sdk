@@ -41,6 +41,9 @@ const har: HarFull = {
             mimeType: 'application/json',
             text: JSON.stringify({
               title: 'iPhone 15 Pro Max 256GB like new',
+              description: 'catcatca',
+              image_name: '0b9f3c1e-5d2a-4e8b-9c7d-1a2b3c4d5e6f_1792981885661.png',
+              ref: 'img_18030034',
               price: 900,
               currency: 'USD',
               category: { externalID: '1453', slug: 'mobile-phones' },
@@ -97,20 +100,26 @@ describe('buildShapeReport', () => {
 
   it('keeps structure, enum-like values and safe headers', () => {
     expect(text).toContain('POST api-prod.olx-dubizzle.com/api/v1/post-ad');
+    expect(text).toContain('"description": "<text 8 chars>"');
+    expect(text).toContain('"image_name": "<id {uuid}_{d13}.png>"');
+    expect(text).toContain('"ref": "<id img_{d8}>"');
     expect(text).toContain('"currency": "USD"');
-    expect(text).toContain('"slug": "mobile-phones"');
+    expect(text).toContain('"slug": "<text 13 chars>"'); // slugs can echo the title
     expect(text).toContain('"externalID": "1453"');
     expect(text).toContain('"location": "0-1-37-12"');
     expect(text).toContain('"condition": "used"');
     expect(text).toContain('"price": 900');
     expect(text).toContain('"title": "<text 32 chars>"');
-    expect(text).toContain('"contactInfo": "<masked object>"');
+    expect(text).toMatch(/"contactInfo": \{\s*"name": "<masked string>",\s*"phone": "<masked string>"\s*\}/);
     expect(text).toContain('content-type: application/json');
     expect(text).toContain('cookie names sent: sid, lang');
   });
 
   it('describes the upload without its signature', () => {
     expect(text).toContain('PUT olx-lb-prod.s3.eu-central-1.amazonaws.com/uploads/{id}');
+    expect(text).not.toContain('1792981885661');
+    expect(text).not.toContain('18030034');
+    expect(text).not.toContain('catcatca');
     expect(text).toContain('X-Amz-Expires=300');
     expect(text).toContain('request body: image/jpeg');
   });
@@ -129,9 +138,23 @@ describe('buildShapeReport', () => {
   });
 });
 
+describe('path ids', () => {
+  it('shows how many digits a path id has, not the id', () => {
+    const { text } = buildShapeReport(
+      { log: { entries: [{ request: { method: 'POST', url: 'https://api-prod.olx-dubizzle.com/api/v1/ads/117145974/delete' }, response: { status: 204 } }] } },
+      { hosts: ['olx-dubizzle.com'] },
+    );
+    expect(text).toContain('POST api-prod.olx-dubizzle.com/api/v1/ads/{id:9 digits}/delete');
+    expect(text).not.toContain('117145974');
+  });
+});
+
 describe('shapeOf', () => {
   it('masks values under secret-looking keys and shortens arrays', () => {
     expect(shapeOf({ accessToken: 'x', items: [1, 2, 3, 4] })).toEqual({ accessToken: '<masked string>', items: [1, 2, '…+2 more'] });
+    expect(shapeOf({ contact_person: { name: 'Mo', phone: [70123456, 3123456] } })).toEqual({
+      contact_person: { name: '<masked string>', phone: ['<masked number>', '…+1 more'] },
+    });
   });
   it('collapses id-like keys', () => {
     expect(shapeOf({ '117145974': { ok: true } })).toEqual({ '{id}': { ok: true } });
