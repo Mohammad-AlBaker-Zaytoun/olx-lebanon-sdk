@@ -11,8 +11,20 @@ Real OLX Lebanon wire format, mapped from a capture of the web app.
 - `ImageUploader.uploadAll` returns `UploadedImage[]` (`{ id, url?, width?, height?, contentType? }`) instead of `string[]`.
 - New ad status `limited` (the ad exists but needs a paid package to be visible).
 
+### Verified live (26 Oct 2026)
+
+Create, edit and delete of a test ad on OLX Lebanon, including photo upload, photos kept on an edit, and photos replaced on an edit.
+
+### Fixed
+
+- Edits no longer pile up photos. An edit whose photos are unchanged since the last sync uploads nothing, and OLX keeps the ad's photos. An edit with new photos removes the old ones with `deleted_photos`, using the ids read from My ads first. If the ad isn't found there, nothing is sent.
+- Locations must be an area inside a district. OLX rejects a district alone with 422.
+
 ### Added
 
+- `npm run catalog -- locations [text]`: area ids from the posting form's location search.
+- `npm run live-test -- check | create | edit | delete`: a step-by-step check against live OLX with one test product.
+- `npm run capture` starts signed in with the session saved by `npm run login`.
 - Signed-URL photo uploads (`SignedUploadFlow`). Photos only go to OLX's own bucket and folder, and the session is never sent there.
 - The account (`currentUser`) is read once per saved session. `OLX_CONTACT_NAME`, `OLX_CONTACT_PHONE` and `OLX_CONTACT_METHOD` override the contact on ads.
 - A best-effort "My ads" status lookup after writes, done only after the result is saved.

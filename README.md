@@ -46,7 +46,14 @@ OLX Group publishes partner APIs for some countries, but OLX Lebanon runs on Dub
 
 ## Status
 
-The endpoints and wire format are mapped from a capture of the OLX Lebanon web app (October 2026) and covered by tests against that format. Not yet verified against live OLX with a test product. Before you post, fill in **your** categories and location in `config/catalog.json` (see [Catalog](#catalog)).
+The endpoints and wire format are mapped from a capture of the OLX Lebanon web app (October 2026) and **verified against live OLX** on 26 October 2026 with a test product (`npm run live-test`):
+
+- **Create:** the photo is uploaded to S3 and the ad goes live with its photo. The state is read back from My ads.
+- **Edit with the same photos:** the price changes and nothing is re-uploaded. The ad keeps its photos.
+- **Edit with new photos:** the new ones are uploaded and the old ones are removed (`deleted_photos`).
+- **Delete:** the ad is removed.
+
+OLX puts an edited ad back into review (`pending_review`) for a while, as it does for edits made by hand. Before you post, fill in **your** categories and locations in `config/catalog.json` (see [Catalog](#catalog)).
 
 ### Free-ad limits
 
