@@ -55,6 +55,19 @@ export class UncertainWriteError extends OlxSdkError {
   readonly body?: unknown;
 }
 
+/** `link` would replace a healthy link to a different ad (which would orphan that ad). */
+export class LinkConflictError extends OlxSdkError {
+  constructor(
+    public readonly productId: string,
+    public readonly currentAdId: string,
+  ) {
+    super(
+      `Product "${productId}" is already linked to ad ${currentAdId}. Pass replace: true to re-link it ` +
+        '(the current ad will no longer be managed — delete it on OLX if it should not stay live).',
+    );
+  }
+}
+
 /** An image could not be uploaded; no ad request was sent, so it is safe to retry. */
 export class ImageUploadError extends OlxSdkError {}
 

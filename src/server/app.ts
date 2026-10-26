@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { isSafePathParam } from '../endpoints.js';
+import { LinkConflictError } from '../errors.js';
 import { RestListingSchema } from '../listings/types.js';
 import type { SyncRecord, SyncStore } from '../sync/SyncStore.js';
 import type { JobQueue } from './queue.js';
@@ -11,7 +13,7 @@ export interface ServerDeps {
   store: SyncStore;
   /** Manual resolution of parked products (see SyncService.link / forget). */
   resolve: {
-    link(productId: string, adId: string): Promise<SyncRecord>;
+    link(productId: string, adId: string, opts?: { replace?: boolean }): Promise<SyncRecord>;
     forget(productId: string): Promise<boolean>;
   };
   status: () => Promise<Record<string, unknown>>;
@@ -20,7 +22,11 @@ export interface ServerDeps {
 const PRODUCT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 
 const ResolveSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('link'), adId: z.string().trim().min(1).max(128) }),
+  z.object({
+    action: z.literal('link'),
+    adId: z.string().trim().refine(isSafePathParam, 'adId may only contain letters, digits, "_", "-" and inner dots'),
+    replace: z.boolean().optional(),
+  }),
   z.object({ action: z.literal('forget') }),
 ]);
 
@@ -89,7 +95,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     if (!PRODUCT_ID.test(productId)) return reply.code(400).send({ error: 'invalid_product_id' });
     const parsed = ResolveSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_resolution', issues: parsed.error.issues });
-    if (parsed.data.action === 'link') return deps.resolve.link(productId, parsed.data.adId);
+    if (parsed.data.action === 'link') {
+      try {
+        return await deps.resolve.link(productId, parsed.data.adId, { replace: parsed.data.replace });
+      } catch (err) {
+        if (err instanceof LinkConflictError) {
+          return reply.code(409).send({ error: 'link_conflict', currentAdId: err.currentAdId, message: err.message });
+        }
+        throw err;
+      }
+    }
     return { forgotten: await deps.resolve.forget(productId) };
   });
 

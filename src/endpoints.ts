@@ -75,6 +75,10 @@ export function endpointStatus(map: EndpointMap): Record<EndpointName, boolean> 
   return Object.fromEntries(ENDPOINT_NAMES.map((n) => [n, map[n] !== null])) as Record<EndpointName, boolean>;
 }
 
+/** Ad ids and similar: letters, digits, `_` and `-`, optionally with inner dots; never `.`/`..`. */
+const SAFE_PARAM = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
+export const isSafePathParam = (value: string): boolean => value.length <= 128 && SAFE_PARAM.test(value);
+
 export function buildUrl(
   baseUrl: string,
   spec: EndpointSpec,
@@ -84,6 +88,9 @@ export function buildUrl(
   const path = spec.path.replace(/\{(\w+)\}/g, (_match, key: string) => {
     const value = params[key];
     if (value === undefined) throw new OlxSdkError(`Missing path parameter "${key}" for ${spec.path}`);
+    // encodeURIComponent leaves "." and ".." intact, which would let an id walk up the path
+    // (e.g. DELETE /api/ads/.. → DELETE /api/). Only plain id-like values are allowed.
+    if (!isSafePathParam(value)) throw new OlxSdkError(`Unsafe value for path parameter "${key}"`);
     return encodeURIComponent(value);
   });
   const url = new URL(path, baseUrl);

@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     queue,
     store: client.syncStore,
     resolve: {
-      link: (productId, adId) => client.sync.link(productId, adId),
+      link: (productId, adId, opts) => client.sync.link(productId, adId, opts),
       forget: (productId) => client.sync.forget(productId),
     },
     status: async () => ({

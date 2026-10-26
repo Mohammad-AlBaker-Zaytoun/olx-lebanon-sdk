@@ -105,6 +105,13 @@ describe('REST server', () => {
       payload: { action: 'link' },
     });
     expect(bad.statusCode).toBe(400);
+    const traversal = await app.inject({
+      method: 'POST',
+      url: '/products/P-6/listing/resolve',
+      headers: auth,
+      payload: { action: 'link', adId: '..' },
+    });
+    expect(traversal.statusCode).toBe(400);
     expect(resolved).toEqual(['link:P-5:ad-77', 'forget:P-6']);
   });
 

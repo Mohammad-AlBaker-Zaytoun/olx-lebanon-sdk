@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto';
-import { OlxHttpError, OlxSdkError, ReconcileRequiredError, UncertainWriteError } from '../errors.js';
+import { isSafePathParam } from '../endpoints.js';
+import {
+  LinkConflictError,
+  OlxHttpError,
+  OlxSdkError,
+  ReconcileRequiredError,
+  UncertainWriteError,
+} from '../errors.js';
 import type { ListingsPort } from '../listings/ListingsApi.js';
 import type { ImageSource, ListingInput, OlxAd } from '../listings/types.js';
 import { silentLogger, type Logger } from '../logger.js';
@@ -85,10 +92,18 @@ export class SyncService {
     return this.withLock(productId, () => this.doRemove(productId));
   }
 
-  /** Resolve a parked product: you found its ad on OLX. The next upsert will edit that ad. */
-  link(productId: string, adId: string): Promise<SyncRecord> {
+  /**
+   * Resolve a parked product (you found its ad on OLX), or adopt an ad you posted by hand.
+   * The next upsert will edit that ad. Refuses to silently replace a healthy link to a
+   * different ad unless `replace` is set.
+   */
+  link(productId: string, adId: string, opts: { replace?: boolean } = {}): Promise<SyncRecord> {
     return this.withLock(productId, async () => {
+      if (!isSafePathParam(adId)) throw new OlxSdkError(`Invalid ad id "${adId}"`);
       const existing = await this.d.store.get(productId);
+      if (existing && !existing.syncState && existing.adId !== adId && !opts.replace) {
+        throw new LinkConflictError(productId, existing.adId);
+      }
       const ts = this.now().toISOString();
       const record: SyncRecord = {
         productId,

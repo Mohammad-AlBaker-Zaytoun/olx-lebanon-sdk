@@ -9,6 +9,7 @@ import { loadConfig } from '../src/config.js';
 import { parseEndpoints, type EndpointMap } from '../src/endpoints.js';
 import {
   AuthError,
+  LinkConflictError,
   MappingError,
   OlxHttpError,
   OlxSdkError,
@@ -253,6 +254,19 @@ describe('SyncService duplicate protection', () => {
     expect(l.update).toHaveBeenCalledWith('ad-found', product);
   });
 
+  it('refuses unsafe ad ids and will not silently replace a healthy link', async () => {
+    const l = listings();
+    const store = new MemorySyncStore();
+    const sync = new SyncService({ listings: l, store });
+    await expect(sync.link('P1', '..')).rejects.toThrow(/Invalid ad id/);
+    await expect(sync.link('P1', 'a/b')).rejects.toThrow(/Invalid ad id/);
+
+    await sync.upsert('P1', product); // healthy link to ad-1
+    await expect(sync.link('P1', 'ad-other')).rejects.toBeInstanceOf(LinkConflictError);
+    expect((await sync.link('P1', 'ad-other', { replace: true })).adId).toBe('ad-other');
+    expect((await sync.link('P1', 'ad-other')).adId).toBe('ad-other'); // same id: idempotent
+  });
+
   it('forget() lets a parked product be created again', async () => {
     const l = listings({
       create: vi
@@ -426,7 +440,27 @@ describe('image downloads', () => {
     expect((err as Error).message).not.toContain('SECRET');
   });
 
+  it('enforces an overall download budget per listing', async () => {
+    const fetchImpl = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      return img();
+    }) as unknown as typeof fetch;
+    const up = new ImageUploader({
+      http: dummyHttp,
+      adapter: placeholderAdapter,
+      fetchImpl,
+      totalTimeoutMs: 50,
+      resolveHost: async () => ['93.184.216.34'],
+    });
+    const urls = [1, 2, 3, 4].map((i) => ({ url: `https://cdn.example/${i}.jpg` }));
+    await expect(up.uploadAll(urls)).rejects.toThrow(/took too long/);
+    expect(vi.mocked(fetchImpl).mock.calls.length).toBeLessThan(4);
+  });
+
   it.each([
+    ['64:ff9b::a9fe:a9fe', true],
+    ['2002:a9fe:a9fe::1', true],
+    ['fec0::1', true],
     ['10.1.2.3', true],
     ['172.20.0.1', true],
     ['192.168.1.1', true],

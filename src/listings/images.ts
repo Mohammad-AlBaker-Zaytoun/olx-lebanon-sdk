@@ -35,8 +35,13 @@ for (const [net, prefix] of [
 for (const [net, prefix] of [
   ['::', 128],
   ['::1', 128],
+  ['64:ff9b::', 96], // NAT64: can map to 169.254.169.254 on IPv6-only networks
+  ['64:ff9b:1::', 48], // local-use NAT64
+  ['2001::', 32], // Teredo
+  ['2002::', 16], // 6to4: embeds an IPv4 address
   ['fc00::', 7],
   ['fe80::', 10],
+  ['fec0::', 10], // deprecated site-local
   ['ff00::', 8],
 ] as const) {
   BLOCKED.addSubnet(net, prefix, 'ipv6');
@@ -64,7 +69,10 @@ export interface ImageUploaderOptions {
    */
   allowedHosts?: string[];
   maxBytes?: number;
+  /** Per request (each redirect hop). */
   timeoutMs?: number;
+  /** Overall budget for downloading all images of one listing, so one job can't hold the queue. */
+  totalTimeoutMs?: number;
   maxRedirects?: number;
   fetchImpl?: typeof fetch;
   /** DNS resolution, injectable for tests. */
@@ -83,15 +91,23 @@ const safeUrl = (u: URL): string => u.origin + u.pathname;
 export class ImageUploader {
   constructor(private readonly o: ImageUploaderOptions) {}
 
-  /** Uploads images one at a time, in order, and returns OLX's image ids. */
+  /**
+   * Fetches and uploads images one at a time, in order (only one image is in memory at a
+   * time), with one overall download budget for the listing. Returns OLX's image ids.
+   */
   async uploadAll(images: ImageSource[]): Promise<string[]> {
+    const deadline = Date.now() + (this.o.totalTimeoutMs ?? 120_000);
     const ids: string[] = [];
-    for (const [i, img] of images.entries()) ids.push(await this.upload(img, i + 1));
+    for (const [i, img] of images.entries()) ids.push(await this.send(await this.load(img, i + 1, deadline)));
     return ids;
   }
 
   async upload(img: ImageSource, position = 1): Promise<string> {
-    const { data, filename, contentType } = await this.load(img, position);
+    const deadline = Date.now() + (this.o.totalTimeoutMs ?? 120_000);
+    return this.send(await this.load(img, position, deadline));
+  }
+
+  private async send({ data, filename, contentType }: LoadedImage): Promise<string> {
     const form = new FormData();
     form.append(this.o.adapter.imageFieldName ?? 'file', new Blob([data as BlobPart], { type: contentType }), filename);
     // Part of a single ad write: the caller already holds the write slot.
@@ -103,7 +119,7 @@ export class ImageUploader {
     return this.o.maxBytes ?? 10 * 1024 * 1024;
   }
 
-  private async load(img: ImageSource, n: number): Promise<LoadedImage> {
+  private async load(img: ImageSource, n: number, deadline: number): Promise<LoadedImage> {
     let loaded: LoadedImage;
     if ('data' in img) {
       loaded = {
@@ -118,7 +134,7 @@ export class ImageUploader {
         contentType: MIME[extname(img.path).toLowerCase()] ?? 'application/octet-stream',
       };
     } else {
-      loaded = await this.download(img.url, n);
+      loaded = await this.download(img.url, n, deadline);
     }
 
     if (loaded.data.byteLength > this.maxBytes) {
@@ -130,17 +146,18 @@ export class ImageUploader {
     return loaded;
   }
 
-  private async download(raw: string, n: number): Promise<LoadedImage> {
+  private async download(raw: string, n: number, deadline: number): Promise<LoadedImage> {
     const fetchImpl = this.o.fetchImpl ?? fetch;
     const maxRedirects = this.o.maxRedirects ?? 3;
     let url = new URL(raw);
 
     for (let hop = 0; ; hop++) {
       await this.assertAllowed(url, n);
-      const res = await fetchImpl(url, {
-        redirect: 'manual',
-        signal: AbortSignal.timeout(this.o.timeoutMs ?? 20_000),
-      });
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new OlxSdkError(`Image ${n}: image downloads took too long for this listing`);
+      // One signal covers headers AND body, so a slowly dripping body is cut off too.
+      const signal = AbortSignal.timeout(Math.min(this.o.timeoutMs ?? 20_000, remaining));
+      const res = await fetchImpl(url, { redirect: 'manual', signal });
 
       if (res.status >= 300 && res.status < 400) {
         await res.body?.cancel();

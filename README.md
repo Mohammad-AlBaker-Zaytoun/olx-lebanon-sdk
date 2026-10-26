@@ -141,6 +141,8 @@ POST /products/P-100/listing/resolve
 { "action": "forget" }                      # no ad exists: the next sync creates one
 ```
 
+`link` also lets you adopt an ad you posted by hand. It refuses (`409 link_conflict`) to replace a healthy link to a *different* ad unless you add `"replace": true`, because replacing it means the old ad is no longer managed.
+
 ### Webhooks
 
 If `WEBHOOK_URL` is set, every finished job is POSTed there, minus raw OLX responses. Each request is signed with `WEBHOOK_SECRET`, which must differ from `SERVER_API_KEY`. The headers are `X-Olx-Sdk-Timestamp` (unix seconds) and `X-Olx-Sdk-Signature: sha256=<hex HMAC of "timestamp.body">`. Redirects are refused, and plain http is only allowed for localhost. Verifying in PHP, where `OLX_WEBHOOK_SECRET` in your store's environment must hold the same value as `WEBHOOK_SECRET` here:
@@ -246,7 +248,7 @@ All settings are environment variables. See [`.env.example`](.env.example) for t
 - `.olx-session/` and `captures/` hold credentials that give **full access to your OLX account**. Both are git-ignored and written owner-only. Never commit or share them. The `.summary.txt` next to a capture holds no secrets.
 - Your session's cookies and auth headers are only sent to the OLX domain and its subdomains. An endpoint on another host gets them only if you set `sendSessionToForeignHost` for it. Redirects from OLX are never followed. Only https endpoints are called.
 - The request log (`logs/requests.jsonl`) records method, path, status and timing only. It contains no bodies, cookies, tokens or query strings, and neither do image error messages.
-- The REST service uses a constant-time API key check, hides internal error details, and accepts only URL images, so a caller can't make it read local files. Image downloads block private and internal addresses unless you allowlist a host.
+- The REST service uses a constant-time API key check, hides internal error details, and accepts only URL images, so a caller can't make it read local files. Image downloads block private and internal addresses unless you allowlist a host. Known limit: the address check and the download resolve DNS separately, so a hostile DNS server could still rebind between the two. On a server with internal services, set `OLX_IMAGE_HOSTS` to your store's image host.
 
 ## Responsible use
 
