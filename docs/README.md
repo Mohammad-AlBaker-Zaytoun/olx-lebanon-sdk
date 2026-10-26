@@ -28,3 +28,7 @@
 **Maintainers**
 
 - [Following an OLX change](ENDPOINT-CAPTURE.md): record the website and map a changed endpoint.
+
+---
+
+Made with ❤️ by [Zaytoun Solutions](https://www.zaytounsolutions.com) · [www.zaytounsolutions.com](https://www.zaytounsolutions.com)

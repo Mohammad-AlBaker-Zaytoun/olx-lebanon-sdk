@@ -1,5 +1,9 @@
 # olx-lebanon-sdk
 
+[![npm](https://img.shields.io/npm/v/olx-lebanon-sdk)](https://www.npmjs.com/package/olx-lebanon-sdk)
+[![CI](https://github.com/Mohammad-AlBaker-Zaytoun/olx-lebanon-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohammad-AlBaker-Zaytoun/olx-lebanon-sdk/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Post, edit and delete **your own** ads on [OLX Lebanon](https://www.olx.com.lb) from Node.js and Next.js. A typed client, product sync with duplicate protection, catalog lookups, a CLI, and an optional REST service for PHP, Python, .NET and other backends.
 
 OLX Lebanon runs on Dubizzle Group's platform and has no public API. This SDK does what the OLX website does when you post by hand, using your own signed-in account, so a store or app can list its products automatically.
@@ -159,3 +163,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose a change. [CHANGELOG.m
 ## License
 
 [MIT](LICENSE). The license covers this code only, and grants no rights to OLX's services, trademarks or content.
+
+---
+
+<p align="center">Made with ❤️ by <a href="https://www.zaytounsolutions.com">Zaytoun Solutions</a> · <a href="https://www.zaytounsolutions.com">www.zaytounsolutions.com</a></p>

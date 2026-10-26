@@ -49,7 +49,9 @@ Global options:
   -h, --help         help for a command (olx-lb <command> --help)
   -v, --version      print the version
 
-Start with: olx-lb init`);
+Start with: olx-lb init
+
+Made with ❤️ by Zaytoun Solutions · https://www.zaytounsolutions.com`);
 }
 
 /** Runs the CLI and returns the exit code (0 ok, 1 failure, 2 wrong usage). */
