@@ -101,20 +101,27 @@ export class OlxHttpClient {
 
     if (opts.rateLimit ?? !isRead) await this.o.limiter.acquire();
 
-    const headers: Record<string, string> = { accept: 'application/json, text/plain, */*' };
-    const session = await this.o.session.getSession();
-    if (session.userAgent) headers['user-agent'] = session.userAgent;
-    if (isWithinDomain(target.hostname, this.domain) || spec.sendSessionToForeignHost === true) {
-      Object.assign(headers, session.headers, this.o.extraHeaders?.(session));
-      const cookie = cookieHeaderFor(session, url);
-      if (cookie) headers.cookie = cookie;
-    }
-    Object.assign(headers, opts.headers);
+    const sendsSession = isWithinDomain(target.hostname, this.domain) || spec.sendSessionToForeignHost === true;
+    let session = await this.o.session.getSession();
+    const buildHeaders = (s: SessionData): Record<string, string> => {
+      const h: Record<string, string> = { accept: 'application/json, text/plain, */*' };
+      if (s.userAgent) h['user-agent'] = s.userAgent;
+      if (sendsSession) {
+        Object.assign(h, s.headers, this.o.extraHeaders?.(s));
+        const cookie = cookieHeaderFor(s, url);
+        if (cookie) h.cookie = cookie;
+      }
+      Object.assign(h, opts.headers);
+      if (opts.json !== undefined) h['content-type'] = 'application/json';
+      return h;
+    };
+    let headers = buildHeaders(session);
+    /** A 401 renews the session once per call (when a refresh token is available), then retries. */
+    let renewed = false;
 
     let body: BodyInit | undefined;
     if (opts.json !== undefined) {
       body = JSON.stringify(opts.json);
-      headers['content-type'] = 'application/json';
     } else if (opts.form) {
       body = opts.form; // fetch sets the multipart boundary itself
     }
@@ -216,6 +223,17 @@ export class OlxHttpClient {
       }
 
       const payload = await readBody(res).catch(() => undefined);
+      if (res.status === 401 && sendsSession && !renewed && this.o.session.renewAfterRejection) {
+        // A 401 means OLX did not process the request, so sending it again is safe.
+        renewed = true;
+        const next = await this.o.session.renewAfterRejection(session);
+        if (next) {
+          this.logger.info('Retrying with the renewed OLX session', { endpoint: name });
+          session = next;
+          headers = buildHeaders(next);
+          continue;
+        }
+      }
       if (res.status === 401 || res.status === 403) {
         this.o.session.invalidate?.();
         throw new AuthError(

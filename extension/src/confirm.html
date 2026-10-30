@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OLX Connect</title>
+    <link rel="stylesheet" href="confirm.css" />
+    <script type="module" src="confirm.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="icons/icon-48.png" alt="" width="32" height="32" />
+        <span>OLX Connect</span>
+      </header>
+      <h1><span id="site">This website</span> is asking for your OLX access token</h1>
+      <p>
+        It will be able to post, edit and delete ads on your OLX account until the token expires. Only allow this if you started
+        it yourself, on
+        <strong id="origin"></strong>.
+      </p>
+      <p class="next">
+        After you allow it, sign in to OLX in the window that opens (or the account already signed in there is used).
+      </p>
+      <div class="actions">
+        <button id="deny" type="button" autofocus>Don't allow</button>
+        <button id="allow" type="button" class="primary">Allow</button>
+      </div>
+      <p id="error" role="alert" hidden></p>
+    </main>
+  </body>
+</html>

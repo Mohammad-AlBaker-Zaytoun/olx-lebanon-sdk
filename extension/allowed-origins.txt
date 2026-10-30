@@ -1,0 +1,4 @@
+# Websites the official OLX Connect build answers, one origin per line (https only;
+# http://localhost:<port> is allowed for development). Changing this list needs a new build.
+https://www.zaytounsolutions.com
+https://zaytounsolutions.com

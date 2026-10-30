@@ -6,6 +6,7 @@ Start with `npx olx-lb check`: it is read-only and shows whether the session wor
 - [Posting](#posting)
 - [Next.js and serverless](#nextjs-and-serverless)
 - [REST service](#rest-service)
+- [Sign in with OLX](#sign-in-with-olx)
 - [Asking for help](#asking-for-help)
 
 ## Setup
@@ -28,7 +29,7 @@ The CLI or REST service found a bad value in `.env`; the message names the varia
 ## Posting
 
 **`auth_failed`**
-OLX refused the token: it expired (about a year), you changed your password or signed out everywhere, or OLX flagged the session. Run `npx olx-lb login` again, then `npx olx-lb token`, and update `OLX_ACCESS_TOKEN`.
+OLX refused the token: it expired (about a year), you changed your password or signed out everywhere, or OLX flagged the session. Run `npx olx-lb login` again, then `npx olx-lb token`, and update `OLX_ACCESS_TOKEN`. With a refresh token the client first tries to renew the token itself ([connect guide](connect.md#let-the-client-renew-the-token)); `auth_failed` then means the renewal failed too.
 
 **`invalid_listing`**
 Nothing was sent; `issues` lists what to fix, for example "Title is 83 characters; OLX allows 70", "locationId 2 is the district "Beirut"; OLX needs an area in it", or "Category "laptops" requires: brand".
@@ -99,6 +100,17 @@ Another program uses the port, often an earlier copy of the service. Stop it, or
 
 **Webhook signatures never match**
 Verify the raw request body, not JSON you decoded and encoded again, and make sure your receiver's secret equals `WEBHOOK_SECRET` exactly (no quotes or trailing spaces). See [Webhooks](rest-api.md#webhooks).
+
+## Sign in with OLX
+
+**`requestOlxToken()` answers `not_installed`**
+The extension isn't installed in this browser (Chrome or Edge only), is turned off, or wasn't built for this exact origin: `https://example.com` and `https://www.example.com` are different origins, and Chrome hides the extension from any site it doesn't list. Check `chrome://extensions`, and the origins its build printed. Behind a different id (your own build), pass `extensionId`.
+
+**The OLX pop-up opens but nothing comes back**
+Finish signing in inside the pop-up, until OLX shows you signed in; the pop-up then closes by itself. Closing it yourself answers `cancelled` (or `not_signed_in` if OLX only held an expired sign-in). The request ends after 5 minutes (`timeout`).
+
+**`olx-lb connect` says the code is wrong or expired**
+Codes are single use and last 10 minutes. Get a new one in your admin; the sign-in step can be repeated.
 
 ## Asking for help
 

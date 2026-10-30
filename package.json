@@ -1,7 +1,7 @@
 {
   "name": "olx-lebanon-sdk",
-  "version": "0.4.0",
-  "description": "Post, edit and delete your own OLX Lebanon ads from Node.js and Next.js: typed client, product sync, catalog lookup, CLI and an optional REST service.",
+  "version": "0.5.0",
+  "description": "Post, edit and delete your own OLX Lebanon ads from Node.js and Next.js: typed client, product sync, catalog lookup, CLI, an optional REST service and \"Sign in with OLX\" for your admin pages.",
   "license": "MIT",
   "author": "Mohammad AlBaker Zaytoun (https://www.zaytoun.dev/)",
   "contributors": [
@@ -37,6 +37,11 @@
       "import": "./dist/tools/index.js",
       "default": "./dist/tools/index.js"
     },
+    "./connect": {
+      "types": "./dist/connect/index.d.ts",
+      "import": "./dist/connect/index.js",
+      "default": "./dist/connect/index.js"
+    },
     "./package.json": "./package.json",
     "./openapi.json": "./openapi.json"
   },
@@ -68,6 +73,8 @@
     "catalog": "tsx src/cli/index.ts catalog",
     "live-test": "tsx src/cli/index.ts test-post",
     "update-locations": "tsx scripts/update-locations.ts",
+    "build:extension": "tsx scripts/build-extension.ts",
+    "test:extension": "tsx scripts/test-extension.ts",
     "openapi": "tsx scripts/write-openapi.ts",
     "typecheck": "tsc --noEmit && tsc -p examples",
     "lint": "eslint .",
@@ -78,6 +85,8 @@
     "test:watch": "vitest"
   },
   "keywords": [
+    "browser-extension",
+    "chrome-extension",
     "classifieds",
     "dubizzle",
     "listings",
@@ -109,6 +118,7 @@
     "@readme/openapi-parser": "^10.0.0",
     "@types/node": "^22.20.5",
     "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",

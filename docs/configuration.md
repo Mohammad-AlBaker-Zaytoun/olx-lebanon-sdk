@@ -20,8 +20,11 @@ createOlxClient({
 
 | Option | Default | |
 | --- | --- | --- |
-| `accessToken` | — | From `olx-lb token`. Give this, `session` or `sessionStore`: exactly one. |
-| `session` | — | A saved session object, as `olx-lb login` writes it. |
+| `accessToken` | — | From `olx-lb token`. Give this, `session` or `sessionStore`: exactly one. Or a function returning the current token, called before each request ([connect guide](connect.md#a-token-saved-in-your-database)). |
+| `refreshToken` | — | The refresh token that came with `accessToken`; the client then renews the token itself ([connect guide](connect.md#let-the-client-renew-the-token)). A function too, when `accessToken` is one. |
+| `onSessionRefreshed` | — | `({ accessToken, refreshToken, expiresAt }) => void \| Promise<void>`: called after each renewal. Save both tokens. |
+| `refresh` | renew within 30 days of expiry and after a 401 | `{ beforeExpiryDays, afterDays, onFailed, authUrl }`, or `false` to turn renewal off. |
+| `session` | — | A saved session object, as `olx-lb login` writes it, or `{ accessToken, refreshToken }`. |
 | `sessionStore` | — | Your own `{ load, save, clear }` store for the session. |
 | `store` | `MemorySyncStore` | Where `sync` keeps product ↔ ad links. Use a database in production ([concepts](concepts.md#the-store)). |
 | `catalog` | none | Your own names for categories and locations ([concepts](concepts.md#your-own-names-the-catalog)), and `listingDefaults`: a default location and a description footer ([store-wide defaults](concepts.md#store-wide-defaults)). |

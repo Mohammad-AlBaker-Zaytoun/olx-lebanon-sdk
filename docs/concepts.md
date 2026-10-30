@@ -221,7 +221,7 @@ The SDK sends your access token as OLX's website does. A token alone is enough; 
 - `session`: a full saved session object, as `olx-lb login` writes it.
 - `sessionStore`: your own `{ load(), save(), clear() }`, for example backed by a secrets manager.
 
-The SDK never signs in by itself, never stores passwords, and never solves CAPTCHAs or phone checks. When the token stops working, calls fail with `auth_failed`; sign in again with `npx olx-lb login`.
+The SDK never signs in by itself, never stores passwords, and never solves CAPTCHAs or phone checks. Given the refresh token that comes with a sign-in, it renews the access token the way the OLX website does ([connect guide](connect.md#let-the-client-renew-the-token)). When the token stops working and can't be renewed, calls fail with `auth_failed`: sign in again with `npx olx-lb login`, or [from your website](connect.md).
 
 ## When OLX changes its website
 

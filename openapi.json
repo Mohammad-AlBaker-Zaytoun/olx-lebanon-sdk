@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "olx-lebanon-sdk REST service",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "description": "Post, edit and delete your own OLX Lebanon ads from any language. Writes are queued and paced: they answer 202 with a job id; poll GET /v1/jobs/{jobId} or configure a webhook for the outcome. Each product keeps exactly one ad. Errors always have the shape `{ \"error\": { \"code\", \"message\", \"details\"?, \"requestId\" } }`; branch on `code`.",
     "license": {
       "name": "MIT"

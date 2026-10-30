@@ -7,3 +7,4 @@ package-lock.json
 openapi.json
 src/data/locations.ts
 *.md
+extension/dist-store/

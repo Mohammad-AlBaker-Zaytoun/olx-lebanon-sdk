@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.0 — 2026-10-30
+
+Connect or renew the OLX account from a website's admin, with no Node.js there, and let the client renew its token itself. Guide: [Connect an OLX account from your website](docs/connect.md).
+
+### Found on the OLX website (30 Oct 2026)
+
+- A sign-in sets three `HttpOnly`, `Secure` cookies on `www.olx.com.lb`: `accessToken`, `refreshToken` and `idToken`. They expire within 30 days; the access token inside is valid for a year.
+- The website renews with `POST https://auth-bridge-prod.olx-dubizzle.com/auth/refresh` and `{ refreshToken }`, only after a 401. A renewal returns a new access token (valid a year from then) and a new refresh token; the previous access token keeps working.
+- Signing in again does not end earlier sign-ins.
+- Verified live: OLX Connect from `https://www.zaytounsolutions.com`, a sign-in by hand in the pop-up, a token `account.profile()` accepts; and a renewal with `refreshOlxTokens`.
+- The access token's `sub` is the account's public id (`externalID`); it also carries the account's name. olx.com.lb sends no `Cross-Origin-Opener-Policy`.
+
+### Added
+
+- `inspectAccessToken(token)`: `{ wellFormed, expiresAt, issuedAt, subject, name }` from a token, with no network call; never throws.
+- Token renewal. `createOlxClient({ accessToken, refreshToken, onSessionRefreshed })` renews the access token within 30 days of its expiry and after a 401 (then sends the rejected request once more), one renewal at a time, and hands you the new pair to save. `refresh: { beforeExpiryDays, afterDays, onFailed, authUrl }` tunes it, `refresh: false` turns it off, and `client.session.refresh()` renews on demand. Sessions saved by `olx-lb login` renew too, and are saved back. `refreshOlxTokens(refreshToken)` is the renewal on its own.
+- `accessToken` and `refreshToken` can be functions, read before each request, so a long-lived client picks up a token saved elsewhere (`TokenSourceStore`). `session` also takes `{ accessToken, refreshToken }`.
+- **OLX Connect**, a Manifest V3 extension for Chrome and Edge in [`extension/`](extension), and `olx-lebanon-sdk/connect` (browser only): `requestOlxToken()` and `isOlxConnectAvailable()`. The extension answers only the origins it was built for, asks the person in its own window, opens OLX in a pop-up for a sign-in by hand, and answers with `{ token, refreshToken, expiresAt, account }`. Its only permission is `cookies` on `*.olx.com.lb`. The official build's id is `jaflmnbipbkjchpepkbkgfjjhkjnlfda`. `npm run build:extension` builds it, for other origins with `--origins`; `npm run test:extension` checks the whole flow in Chromium.
+- `olx-lb connect <site> --code <code>`: signs in like `olx-lb login`, then sends `{ code, token, refreshToken }` to the site's `/api/admin/olx-connection/pair` and prints its answer. Nothing is saved, and redirects are never followed.
+- `olx-lb token --json` prints `{ accessToken, refreshToken, expiresAt }`.
+
+### Changed
+
+- `SessionData` has an optional `refreshToken`. `sessionFromAccessToken(token, refreshToken?)`.
+- `auth_failed` after a 401 now means the token could not be renewed either (when a refresh token is known).
+
 ## 0.4.0 — 2026-10-26
 
 The rest of a seller's ad lifecycle, insights, and OLX delivery orders.

@@ -12,6 +12,8 @@ Everything below is exported from `olx-lebanon-sdk` unless marked otherwise. All
 - [Stores](#stores)
 - [Errors](#errors)
 - [Logging](#logging)
+- [Tokens](#tokens)
+- [`olx-lebanon-sdk/connect`](#olx-lebanon-sdkconnect)
 - [`olx-lebanon-sdk/server`](#olx-lebanon-sdkserver)
 - [`olx-lebanon-sdk/tools`](#olx-lebanon-sdktools)
 - [Stability](#stability)
@@ -36,7 +38,7 @@ The client:
 | `account` | [`AccountApi`](#olxaccount): profile, wallet, package offers (read only) |
 | `orders` | [`OrdersApi`](#olxorders): OLX delivery orders (experimental) |
 | `syncStore` | The `SyncStore` passed as `store` |
-| `session` | `SessionManager`: `status()` → `{ loggedIn, savedAt?, cookieCount, capturedHeaders }`, `clear()` |
+| `session` | `SessionManager`: `status()` → `{ loggedIn, savedAt?, cookieCount, capturedHeaders }`, `refresh()` → the renewed `{ accessToken, refreshToken, expiresAt }`, `clear()` |
 | `limiter` | `WriteRateLimiter`: `recentCount` (writes in the last hour) |
 | `listings`, `http`, `mapper`, `adapter` | Lower layers, for advanced use and tests |
 
@@ -234,7 +236,7 @@ interface SyncStore {
 
 A database example: [`examples/stores/sql-store.ts`](../examples/stores/sql-store.ts).
 
-Sessions use the same pattern: `SessionStore` (`load`, `save`, `clear`), with `MemorySessionStore`, `FileSessionStore(path)`, and `sessionFromAccessToken(token)` to build a session from a token.
+Sessions use the same pattern: `SessionStore` (`load`, `save`, `clear`, optional `version`), with `MemorySessionStore`, `FileSessionStore(path)`, `TokenSourceStore(accessTokenFn, refreshTokenFn?)` (reads the token from your functions before each request), and `sessionFromAccessToken(token, refreshToken?)` to build a session from a token.
 
 ## Errors
 
@@ -264,6 +266,31 @@ Sessions use the same pattern: `SessionStore` (`load`, `save`, `clear`), with `M
 | `silentLogger` | The default. |
 | `FileRequestLog(path)`, `MemoryRequestLog` | `requestLog` implementations. |
 
+## Tokens
+
+See [Connect an OLX account from your website](connect.md).
+
+| Export | |
+| --- | --- |
+| `inspectAccessToken(token)` | `{ wellFormed, expiresAt, issuedAt, subject, name }` read from the token, with no network call. Never throws: `null` fields for a malformed token. Also in `olx-lebanon-sdk/connect`. |
+| `refreshOlxTokens(refreshToken, { authUrl?, fetch?, timeoutMs? })` | Trades a refresh token for `{ accessToken, refreshToken }`, as the OLX website does. `AuthError` if OLX refuses it. |
+| `OLX_LB_AUTH_URL` | OLX's sign-in service. |
+| `accessTokenOf(session)`, `refreshTokenOf(session)` | The tokens in a saved session. |
+| `type RefreshedSession` | `{ accessToken, refreshToken, expiresAt: Date \| null }`, as given to `onSessionRefreshed`. |
+
+To prove OLX accepts a token, call `client.account.profile()`: it is the cheapest call, and a rejected token throws an `OlxSdkError` with code `auth_failed`.
+
+## `olx-lebanon-sdk/connect`
+
+Browser-only (no Node.js imports), for your website's admin pages, with the [OLX Connect](../extension) extension. [Guide](connect.md#sign-in-with-olx-the-olx-connect-extension).
+
+| Export | |
+| --- | --- |
+| `requestOlxToken({ timeoutMs?, signal?, extensionId? })` | `Promise<{ ok: true, token, refreshToken, expiresAt, account } \| { ok: false, reason }>`. Never rejects. `reason`: `not_installed`, `not_allowed`, `cancelled`, `timeout`, `not_signed_in`, `busy`. |
+| `isOlxConnectAvailable({ extensionId?, timeoutMs? })` | `Promise<{ installed: boolean, version? }>`. |
+| `OLX_CONNECT_EXTENSION_ID` | `'jaflmnbipbkjchpepkbkgfjjhkjnlfda'`, the official build's id. |
+| `inspectAccessToken(token)` | As in the main entry. |
+
 ## `olx-lebanon-sdk/server`
 
 The REST service, for running it from your own code. It needs `fastify`, which is installed with the SDK, and is not loaded unless you import this entry point.
@@ -287,6 +314,6 @@ Maintainer tools for following OLX website changes: HAR summaries, body shapes, 
 
 The SDK follows [semantic versioning](https://semver.org) from 1.0. Before 1.0, minor versions may change the API, and the [changelog](../CHANGELOG.md) lists every change.
 
-- **Stable:** `createOlxClient`, `ads`, `sync`, `catalog`, the types above, `SyncStore`, error classes and codes, `toErrorInfo`, the REST API under `/v1`, the CLI commands and their exit codes.
+- **Stable:** `createOlxClient`, `ads`, `sync`, `catalog`, `inspectAccessToken`, `olx-lebanon-sdk/connect` and the OLX Connect message format (`v: 1`), the types above, `SyncStore`, error classes and codes, `toErrorInfo`, the REST API under `/v1`, the CLI commands and their exit codes.
 - **Advanced, may change in minor versions:** `listings`, `http`, `mapper`, `adapter`, `endpoints`, `OlxClient`'s constructor, and the `tools` entry point.
 - **Not covered:** OLX itself. When OLX changes its website, a release follows the change, possibly with a new minor version.

@@ -4,7 +4,14 @@
  * Start with `createOlxClient()`. The REST service is in `olx-lebanon-sdk/server`, and the
  * capture/HAR tools for mapping a changed OLX format are in `olx-lebanon-sdk/tools`.
  */
-export { createOlxClient, DEFAULT_WRITE_LIMITS, OLX_LB_BASE_URL, type CreateOlxClientOptions } from './createClient.js';
+export {
+  createOlxClient,
+  DEFAULT_WRITE_LIMITS,
+  OLX_LB_BASE_URL,
+  type AccessTokenSource,
+  type CreateOlxClientOptions,
+  type RefreshTokenSource,
+} from './createClient.js';
 export { AccountApi } from './account/AccountApi.js';
 export { AdsApi, type AdInput, type AdPage } from './listings/AdsApi.js';
 export { adActions } from './listings/actions.js';
@@ -96,19 +103,26 @@ export {
   preferCapturedHeader,
   scopeStorageState,
   SessionManager,
+  type RefreshedSession,
   type SessionManagerOptions,
   type SessionProvider,
+  type SessionRefreshOptions,
   type SessionStatus,
 } from './session/SessionManager.js';
+export { OLX_LB_AUTH_URL, refreshOlxTokens, type OlxTokens, type RefreshOlxTokensOptions } from './session/refresh.js';
 export {
   FileSessionStore,
   MemorySessionStore,
+  TokenSourceStore,
+  accessTokenOf,
   cookieHeaderFor,
+  refreshTokenOf,
   sessionFromAccessToken,
   type SessionData,
   type SessionStore,
   type StoredCookie,
 } from './session/storage.js';
+export { inspectAccessToken, type AccessTokenInfo } from './session/token.js';
 export {
   SyncService,
   hashImages,

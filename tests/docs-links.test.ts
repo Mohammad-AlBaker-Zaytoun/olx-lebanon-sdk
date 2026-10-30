@@ -39,6 +39,7 @@ const files = [
   join(ROOT, 'CODE_OF_CONDUCT.md'),
   ...markdownFiles(join(ROOT, 'docs')),
   ...markdownFiles(join(ROOT, 'examples')),
+  join(ROOT, 'extension/README.md'),
 ];
 
 describe('documentation links', () => {

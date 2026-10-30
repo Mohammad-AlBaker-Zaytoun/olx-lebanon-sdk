@@ -1,5 +1,8 @@
 node_modules/
 dist/
+/extension/dist/
+/extension/dist-store/
+*.pem
 coverage/
 
 # Secrets and per-user runtime state — never commit these

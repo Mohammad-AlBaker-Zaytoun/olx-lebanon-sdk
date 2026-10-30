@@ -9,6 +9,7 @@
 - [Next.js](nextjs.md): route handlers, server actions, a database store, Vercel and serverless.
 - [Node.js](node.md): sync scripts, cron, web servers, workers, logging, CommonJS.
 - [REST service](rest-api.md): for PHP, Python, .NET and any other backend. Jobs, webhooks, OpenAPI.
+- [Connect an OLX account from your website](connect.md): check a pasted token, let the client renew it, Sign in with OLX (the OLX Connect extension), pairing with `olx-lb connect`.
 
 **Understand it**
 

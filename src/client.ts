@@ -15,7 +15,8 @@ import { ImageUploader, type ImageUploaderOptions } from './listings/images.js';
 import { ListingsApi } from './listings/ListingsApi.js';
 import { FileRequestLog, createLogger, silentLogger, type Logger, type RequestLog } from './logger.js';
 import { CatalogMapper, loadCatalog, type Catalog } from './mapping/CatalogMapper.js';
-import { DEFAULT_CAPTURED_HEADERS, SessionManager } from './session/SessionManager.js';
+import { DEFAULT_CAPTURED_HEADERS, SessionManager, type SessionRefreshOptions } from './session/SessionManager.js';
+import { refreshOlxTokens } from './session/refresh.js';
 import { FileSessionStore, MemorySessionStore, sessionFromAccessToken, type SessionStore } from './session/storage.js';
 import { SyncService } from './sync/SyncService.js';
 import { JsonFileSyncStore, type SyncStore } from './sync/SyncStore.js';
@@ -48,6 +49,11 @@ export interface OlxClientOptions {
   images?: Pick<ImageUploaderOptions, 'maxBytes' | 'timeoutMs' | 'totalTimeoutMs' | 'maxRedirects'>;
   /** Options for `client.catalog` (public category and location data). */
   catalogApi?: OlxCatalogOptions;
+  /**
+   * Renewing the access token with the session's refresh token. On by default with the OLX
+   * Lebanon adapter (it only happens when the session has a refresh token); `false` turns it off.
+   */
+  refresh?: Partial<SessionRefreshOptions> | false;
 }
 
 /**
@@ -79,12 +85,18 @@ export class OlxClient {
     const adapter = opts.adapter ?? olxLebanonAdapter;
     this.adapter = adapter;
     this.endpoints = opts.endpoints;
+    const refresher =
+      opts.refresh === false
+        ? undefined
+        : (opts.refresh?.refresher ??
+          (adapter === olxLebanonAdapter ? (token: string) => refreshOlxTokens(token, { fetch: opts.transport }) : undefined));
     this.session = new SessionManager({
       baseUrl: opts.baseUrl,
       store: opts.sessionStore,
       logger,
       extraHosts: opts.extraHosts,
       captureHeaders: [...DEFAULT_CAPTURED_HEADERS, ...(opts.captureHeaders ?? [])],
+      refresh: refresher && opts.refresh !== false ? { ...opts.refresh, refresher } : undefined,
     });
     this.limiter = new WriteRateLimiter(opts.writeLimits, opts.clock);
     this.http = new OlxHttpClient({

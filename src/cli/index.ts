@@ -21,6 +21,7 @@ const COMMANDS: Record<string, () => Promise<Command>> = {
   init: async () => (await import('./commands/init.js')).init,
   login: async () => (await import('./commands/login.js')).login,
   token: async () => (await import('./commands/login.js')).token,
+  connect: async () => (await import('./commands/connect.js')).connect,
   catalog: async () => (await import('./commands/catalog.js')).catalog,
   check: async () => (await import('./commands/check.js')).check,
   ads: async () => (await import('./commands/ads.js')).ads,
@@ -29,7 +30,7 @@ const COMMANDS: Record<string, () => Promise<Command>> = {
   capture: async () => (await import('./commands/capture.js')).capture,
 };
 
-const ORDER = ['init', 'login', 'token', 'catalog', 'check', 'ads', 'test-post', 'serve', 'capture'];
+const ORDER = ['init', 'login', 'token', 'connect', 'catalog', 'check', 'ads', 'test-post', 'serve', 'capture'];
 
 async function help(ctx: CliContext, name?: string): Promise<void> {
   if (name && COMMANDS[name]) {

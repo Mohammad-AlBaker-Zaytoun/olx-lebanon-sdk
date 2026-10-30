@@ -41,6 +41,7 @@ console.log(ad.id, ad.status); // "117146151" "active"
 - **Catalog lookups.** Categories, each category's fields and choices, and all 662 locations (with Arabic names, offline), to find ids or build your own forms.
 - **Photos.** From URLs, local files or bytes. Re-uploaded only when they change, and downloaded with SSRF protection.
 - **Stable error codes.** `invalid_listing`, `olx_rejected` (with OLX's field errors), `auth_failed`, `outcome_unknown`… The same codes in the library, the REST API and webhooks.
+- **Sign in with OLX.** Let your website's admin connect or renew the account: the [OLX Connect](extension) browser extension hands the token to your site after a sign-in by hand, `olx-lb connect` pairs with a one-time code, and the client renews the token itself with OLX's refresh token.
 - **REST service and CLI.** `npx olx-lb serve` for any language, with an OpenAPI 3.1 contract, a job queue and signed webhooks. `npx olx-lb` also signs you in, looks up ids, and test-posts.
 
 ## Install
@@ -62,6 +63,8 @@ npx olx-lb token     # prints the access token for OLX_ACCESS_TOKEN
 ```
 
 The token lasts about a year. Treat it like your password: never commit it or send it to a browser. [More](docs/getting-started.md#2-sign-in-once-and-get-your-access-token)
+
+To connect or renew the account from your website's admin instead (no Node.js needed there), and to let the client renew the token itself: [Connect an OLX account from your website](docs/connect.md).
 
 ## One ad per product
 
@@ -94,7 +97,8 @@ The same from code: `olx.catalog.findCategories('laptop')`, `olx.catalog.fields(
 | --- | --- |
 | `olx-lb init` | Sets up a folder for the CLI and REST service: `.env` with a new API key, a catalog file, `.gitignore` entries |
 | `olx-lb login` | Opens a browser to sign in by hand, then saves the session to `.olx-session/` |
-| `olx-lb token` | Prints the access token for your app's environment variables |
+| `olx-lb token` | Prints the access token for your app's environment variables (`--json` adds the refresh token) |
+| `olx-lb connect <site> --code <code>` | Signs in to OLX and sends the sign-in straight to your website, which showed the one-time code |
 | `olx-lb check [--product file.json]` | Read-only check of the session, the account, your newest ads, and how a product maps |
 | `olx-lb catalog categories\|fields\|locations` | Category ids, a category's fields and choices, area ids. `--json` for scripts |
 | `olx-lb ads [list\|deactivate\|activate\|sold\|delete\|reason]` | Your ads with status, expiry, views and leads; change one ad's state |
@@ -137,6 +141,7 @@ Verified against live OLX Lebanon on 26 October 2026: creating an ad with a phot
 - Locations ship with the SDK. Only the maintainer script `npm run update-locations` contacts OLX's location search, with the website's own read-only key from a capture, which is never printed or saved.
 - Photo downloads refuse plain http and private or internal addresses unless you allow a host. Redirects are re-checked on every hop, and downloads stop at 10 MB. (Known limit: the address check and the download resolve DNS separately. On a server with internal services, allow only your image host.)
 - The request log records method, path, status and timing only. Logs never contain tokens, cookies, request bodies or query strings; a failed job's log line includes OLX's validation message, which is what you need to fix the product.
+- The [OLX Connect](extension) extension answers only the websites it was built for, asks before every hand-over in its own window, and keeps nothing. Its only permission is `cookies` on `*.olx.com.lb`.
 - The REST service binds to `127.0.0.1`, checks its API key in constant time, accepts only URL photos, and never returns raw OLX responses or internal error details.
 
 Found a security problem? Please report it privately; see [SECURITY.md](SECURITY.md).
@@ -160,6 +165,7 @@ npm run typecheck    # the SDK and the examples
 npm test
 npm run build
 npm run olx -- help  # the CLI from source
+npm run build:extension && npm run test:extension  # the OLX Connect extension, checked in Chromium
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose a change. [CHANGELOG.md](CHANGELOG.md) lists what changed in each version. `npm run update-locations` refreshes the shipped locations, and `npm run openapi` regenerates `openapi.json` (maintainers).

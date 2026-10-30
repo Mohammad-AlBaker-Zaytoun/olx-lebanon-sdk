@@ -211,7 +211,7 @@ For bulk or scheduled syncing, move the writes out of request handlers:
 
 - Server only: route handlers, server actions, server components, `runtime = 'nodejs'`.
 - One client per process, reused.
-- The token in a server-side environment variable, never `NEXT_PUBLIC_…`.
+- The token in a server-side environment variable or a server-only database document, never `NEXT_PUBLIC_…`. To connect or renew it from your admin pages, see [Connect an OLX account from your website](connect.md).
 - A database store in production.
 - One writer per product, and bulk work in the background.
 - Branch on `err.code`, and show `toErrorInfo(err).details` to whoever fixes the product. See [Errors](errors.md).
